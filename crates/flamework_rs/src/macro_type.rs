@@ -134,7 +134,7 @@ pub enum Constituents {
     Intersection(Vec<P<Type>>),
 }
 
-/// A property of an object type ([`MacroCx::fields`]), in declaration order.
+/// A property of an object type ([`MacroCx::fields`]), in TypeScript 5's order.
 #[derive(Clone, Debug)]
 pub struct Field {
     /// The property's name.
