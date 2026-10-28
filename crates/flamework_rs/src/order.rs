@@ -11,7 +11,6 @@
 use rbxts_plugin::Cx;
 use rbxts_plugin::ts::{Kind, Node, P};
 
-use crate::metadata::get_symbol;
 use crate::plugin::FwInstance;
 
 /// A position in the TS transformer's walk of a file: one rank per level from the file down. Compared
@@ -65,17 +64,10 @@ impl FwInstance {
         }
     }
 
-    /// The TS transformer takes the call through `transformUserMacro`: its callee is a user macro, and it is not
-    /// `super(...)`.
+    /// The TS transformer takes the call through `transformUserMacro`: its callee's own symbol is a user macro
+    /// ([`crate::macros::is_macro_callee`]).
     fn is_macro_call(&self, cx: &mut Cx<'_>, call: P<Node>) -> bool {
-        let Some(callee) = call.expression() else { return false };
-        if callee.kind() == Kind::SuperKeyword {
-            return false;
-        }
-        match get_symbol(cx, callee) {
-            Some(symbol) => self.is_user_macro(cx, symbol),
-            None => false,
-        }
+        crate::macros::is_macro_callee(self, cx, call)
     }
 
     fn has_reflect(&self, cx: &mut Cx<'_>, class: P<Node>) -> bool {

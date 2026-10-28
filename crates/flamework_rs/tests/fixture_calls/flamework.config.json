@@ -1,0 +1,5 @@
+{
+	"transformer": {
+		"plugins": [{ "path": "./fieldInfoPlugin.cjs", "options": { "prefix": "fx" } }]
+	}
+}
