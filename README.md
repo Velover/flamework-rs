@@ -71,4 +71,4 @@ node tools/parity.cjs <rbxtsc-fw exe> <project dir> <reference out dir> <work di
 
 It copies the project into the work dir (without its `out`, `include` and build infos; links are kept as junctions),
 builds it, and prints `build exit N` and `identical A, differing B, only ours C, only ref D` (`tools/compare.cjs`, also
-usable on its own). `node tools/parity.cjs` without arguments lists the options.
+usable on its own). The options are described at the top of `tools/parity.cjs`.

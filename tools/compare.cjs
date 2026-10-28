@@ -46,13 +46,16 @@ function compare(ours, ref, { diff = 0, report, log = console.log } = {}) {
 			result.onlyOurs.push(file);
 			continue;
 		}
-		const ta = fs.readFileSync(a, "utf8");
-		const tb = fs.readFileSync(b, "utf8");
-		if (ta === tb) {
+		const ba = fs.readFileSync(a);
+		const bb = fs.readFileSync(b);
+		if (ba.equals(bb)) {
 			result.identical.push(file);
 			continue;
 		}
 		result.differing.push(file);
+		// Decoded only to show where the files differ.
+		const ta = ba.toString("utf8");
+		const tb = bb.toString("utf8");
 		const la = ta.split("\n");
 		const lb = tb.split("\n");
 		let i = 0;

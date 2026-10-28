@@ -13,8 +13,9 @@ status=0
 
 # 1. cargo tree -d: every package with more than one copy in the graph, all targets and edge kinds. Each duplicate is
 # a root line (no indent) of the inverted trees it prints.
-dups="$(cargo tree --workspace --duplicates --target all --edges normal,build,dev \
-	| grep -E '^(tsrs|rbxts)_[A-Za-z0-9_-]+ v' | sort -u || true)"
+tree="$(cargo tree --workspace --duplicates --target all --edges normal,build,dev)" \
+	|| { echo "check-deps: cargo tree failed" >&2; exit 2; }
+dups="$(printf '%s\n' "$tree" | grep -E '^(tsrs|rbxts)_[A-Za-z0-9_-]+ v' | sort -u || true)"
 if [ -n "$dups" ]; then
 	echo "check-deps: duplicate tsrs/rbxts crates in the graph (cargo tree -d):"
 	echo "$dups" | sed 's/^/  /'
