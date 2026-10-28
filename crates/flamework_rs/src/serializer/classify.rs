@@ -536,7 +536,7 @@ impl Gen<'_, '_, '_> {
             return Ok(self.kind(Kind::Map(Shape::Type(key), Shape::Type(value))));
         }
 
-        let ordered = self.field_order(ty, properties);
+        let ordered = self.field_order(ty, properties)?;
         let mut fields = Vec::new();
         for property in ordered {
             let property_type = typeinfo::ts5_type_of_property(self.cx, ty, property).unwrap();

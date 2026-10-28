@@ -603,7 +603,7 @@ dependencies = [
 [[package]]
 name = "rbxts_cli"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=1195de16c6fd4127feb0165cf1848a754f6a6995#1195de16c6fd4127feb0165cf1848a754f6a6995"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
 dependencies = [
  "chrono",
  "memory-stats",
@@ -623,12 +623,12 @@ dependencies = [
 [[package]]
 name = "rbxts_luau"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=1195de16c6fd4127feb0165cf1848a754f6a6995#1195de16c6fd4127feb0165cf1848a754f6a6995"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
 
 [[package]]
 name = "rbxts_luau_check"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=1195de16c6fd4127feb0165cf1848a754f6a6995#1195de16c6fd4127feb0165cf1848a754f6a6995"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
 dependencies = [
  "cc",
  "luau0-src",
@@ -637,7 +637,7 @@ dependencies = [
 [[package]]
 name = "rbxts_plugin"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=1195de16c6fd4127feb0165cf1848a754f6a6995#1195de16c6fd4127feb0165cf1848a754f6a6995"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
 dependencies = [
  "rbxts_luau",
  "rbxts_project",
@@ -652,7 +652,7 @@ dependencies = [
 [[package]]
 name = "rbxts_project"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=1195de16c6fd4127feb0165cf1848a754f6a6995#1195de16c6fd4127feb0165cf1848a754f6a6995"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
 dependencies = [
  "serde_json",
  "tsrs_ast",
@@ -670,7 +670,7 @@ dependencies = [
 [[package]]
 name = "rbxts_transform"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=1195de16c6fd4127feb0165cf1848a754f6a6995#1195de16c6fd4127feb0165cf1848a754f6a6995"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
 dependencies = [
  "rbxts_luau",
  "rbxts_luau_check",
@@ -881,7 +881,7 @@ dependencies = [
 [[package]]
 name = "tsrs_ast"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "hashbrown",
@@ -895,7 +895,7 @@ dependencies = [
 [[package]]
 name = "tsrs_astnav"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "tsrs_ast",
  "tsrs_core",
@@ -905,7 +905,7 @@ dependencies = [
 [[package]]
 name = "tsrs_binder"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "rustc-hash",
@@ -918,7 +918,7 @@ dependencies = [
 [[package]]
 name = "tsrs_checker"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "hashbrown",
@@ -942,7 +942,7 @@ dependencies = [
 [[package]]
 name = "tsrs_compiler"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "rayon",
  "rustc-hash",
@@ -968,7 +968,7 @@ dependencies = [
 [[package]]
 name = "tsrs_contentmapper"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "rustc-hash",
  "tsrs_ast",
@@ -984,7 +984,7 @@ dependencies = [
 [[package]]
 name = "tsrs_core"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "dragonbox_ecma",
  "hashbrown",
@@ -1002,7 +1002,7 @@ dependencies = [
 [[package]]
 name = "tsrs_declarations"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "rustc-hash",
  "tsrs_ast",
@@ -1019,7 +1019,7 @@ dependencies = [
 [[package]]
 name = "tsrs_diagnostics"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "rustc-hash",
 ]
@@ -1027,7 +1027,7 @@ dependencies = [
 [[package]]
 name = "tsrs_ipc"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "rustc-hash",
  "tsrs_core",
@@ -1036,7 +1036,7 @@ dependencies = [
 [[package]]
 name = "tsrs_module"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "hashbrown",
@@ -1050,7 +1050,7 @@ dependencies = [
 [[package]]
 name = "tsrs_modulespecifiers"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "regex",
  "rustc-hash",
@@ -1063,7 +1063,7 @@ dependencies = [
 [[package]]
 name = "tsrs_parser"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "rustc-hash",
@@ -1076,7 +1076,7 @@ dependencies = [
 [[package]]
 name = "tsrs_printer"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "rustc-hash",
@@ -1089,7 +1089,7 @@ dependencies = [
 [[package]]
 name = "tsrs_pseudochecker"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "tsrs_ast",
  "tsrs_core",
@@ -1098,7 +1098,7 @@ dependencies = [
 [[package]]
 name = "tsrs_scanner"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "memchr",
@@ -1111,7 +1111,7 @@ dependencies = [
 [[package]]
 name = "tsrs_sourcemap"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "rustc-hash",
  "tsrs_ast",
@@ -1122,7 +1122,7 @@ dependencies = [
 [[package]]
 name = "tsrs_spanmap"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "tsrs_core",
@@ -1131,7 +1131,7 @@ dependencies = [
 [[package]]
 name = "tsrs_transformers"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "rustc-hash",
@@ -1147,7 +1147,7 @@ dependencies = [
 [[package]]
 name = "tsrs_tsoptions"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "rustc-hash",
  "tsrs_ast",
@@ -1163,7 +1163,7 @@ dependencies = [
 [[package]]
 name = "tsrs_vfs"
 version = "0.20.0"
-source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=92248ec55e1335c7c52e7de213666dbfff75c2e3#92248ec55e1335c7c52e7de213666dbfff75c2e3"
+source = "git+file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs?rev=77c97efa2c7005a248d2c6010b395eacfdbabd89#77c97efa2c7005a248d2c6010b395eacfdbabd89"
 dependencies = [
  "bitflags",
  "rayon",

@@ -8,7 +8,7 @@ interface Base {
 	mid: boolean;
 }
 
-/** Mapped types whose field order rbxts-rs reads exactly (the other shapes are refused: see serializer_e2e.rs). */
+/** Mapped types and the types that inherit their properties (spreads and `as` remaps: spreads.ts, remaps.ts). */
 export interface ExtPick extends Pick<Base, "zeta" | "alpha"> {
 	own: u8;
 }
@@ -16,7 +16,7 @@ export type InterChain = Pick<Base, "zeta"> & Partial<Pick<Base, "alpha" | "mid"
 export type OmitPartial = Readonly<Omit<Partial<Base>, "alpha">>;
 export type Keyed = Record<"zz" | "aa" | "mm", u8>;
 export type Homomorphic = { [K in keyof Base as Exclude<K, "mid">]: Base[K] };
-// A generic interface's instance: its mapped bases are read as declared (their keys are known statically).
+// A generic interface's instance: its mapped bases are instantiated for the argument.
 interface ExtGeneric<T extends Base> extends Pick<T, "zeta" | "alpha">, Record<"q" | "b", u8> {
 	own: u8;
 }

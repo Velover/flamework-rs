@@ -86,6 +86,19 @@ Where flamework-rs's output may differ from Flamework's TS transformer (TypeScri
   mapped type), an instance shape, a `Modding.inspect` or `Many` map, a macro type's fields), the
   property is left out of serializers, guards and macros without an error, and an object left with no fields is
   serialized as a blob. The fix belongs in tsrs.
+- **Object rests are refused (not an output difference).** TypeScript 5 lists the properties of an object rest
+  (`const { a, ...rest } = value`) in the order it lists those of `value`'s type; rbxts-rs's TypeScript 5 property
+  order does not rebuild that for a rest yet and keeps TypeScript 7's (by declaration), which differs where `value`'s
+  type is a spread (`{ a, ...b }`), inherits a member it redeclares, or has late-bound members. So a serializer of a
+  rest whose field order depends on that list is refused, even where the two orders happen to agree: any rest with
+  more than one property, except one whose properties a single mapped type (`Pick`, `Omit`, `Record`, ...) made,
+  which goes in that type's own order, or whose properties go by name. A type built from such a rest is refused too
+  where its own field order follows its list: a spread of the rest, an interface extending it, a homomorphic mapped
+  type (`Readonly`, `Partial`, ...) over one of those, wherever they are nested. Write such a type out as an
+  interface or an object type. The fix belongs in rbxts-rs.
+- **Guard text of an object rest.** A guard of an object rest (or of a type built from one) lists its keys
+  (`t.interface({ ... })`) in TypeScript 7's order rather than TypeScript 5's. The guard checks the same keys, so only
+  the generated text differs, not what it accepts or anything on the wire. Same cause as above.
 - **Order that depends on symbol ids.** A union that no written type orders (`Box<A | B>` reaching `value: T`) orders
   its members by a text of each type, and an object's text spells a unique-symbol key with the symbol's id
   (`__@sym@12`). Two keys whose texts agree up to the id (two unique symbols with the same name from different modules,

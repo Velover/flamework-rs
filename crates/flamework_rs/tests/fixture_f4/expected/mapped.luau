@@ -1,8 +1,8 @@
 -- Compiled with roblox-ts v3.0.0
 local TS = _G[script]
 local Flamework = TS.import(script, TS.getModule(script, "@flamework-experimental", "core").out).Flamework
--- Mapped types whose field order rbxts-rs reads exactly (the other shapes are refused: see serializer_e2e.rs).
--- A generic interface's instance: its mapped bases are read as declared (their keys are known statically).
+-- Mapped types and the types that inherit their properties (spreads and `as` remaps: spreads.ts, remaps.ts).
+-- A generic interface's instance: its mapped bases are instantiated for the argument.
 -- `as` clauses that give each key itself or drop it.
 local codec = {}
 local vsize = function(n)

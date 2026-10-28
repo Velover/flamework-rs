@@ -2,9 +2,10 @@
 //! and a macro of the fixture's own, both user macros whose `serializer` intrinsic reaches the generator
 //! (`crate::macros`), every kind of type, one file per family (primitives, datatypes, structures, unions, a file past
 //! its budget of locals, a user-declared serializer macro, serializer macros nested in each other's arguments, the
-//! mapped types whose field order is read exactly, the properties TS5 leaves out (unique-symbol keys, private names),
-//! a guard named after the serializers' file-level locals, and guards earlier in a serializer's root statement, named
-//! after what the serializer hoisted).
+//! mapped types, the types that copy or inherit a mapped type's properties (spreads, object rests, a generic
+//! interface's instantiated bases) and `as` clauses that rename keys, the properties TS5 leaves out (unique-symbol
+//! keys, private names), a guard named after the serializers' file-level locals, and guards earlier in a
+//! serializer's root statement, named after what the serializer hoisted).
 //!
 //! `tests/fixture_f4/expected` holds the TS5 pipeline's output for every file (roblox-ts master with the published
 //! 2.0.0-beta.0 transformer), each compared whole. `unions.luau` has union members told apart by F3's guards, which
@@ -36,20 +37,25 @@ fn every_kind_builds_and_matches_ts5() {
         let entry = entry.unwrap();
         let name = entry.file_name().to_string_lossy().into_owned();
         let want = std::fs::read_to_string(entry.path()).unwrap().replace("\r\n", "\n");
-        let got = luau(&report, &name);
         compared += 1;
-        if got != want {
-            let line = got.lines().zip(want.lines()).position(|(a, b)| a != b).unwrap_or(0);
-            failures.push(format!(
-                "{name}: first difference at line {}\n  ours: {}\n  ts5:  {}",
-                line + 1,
-                got.lines().nth(line).unwrap_or("<eof>"),
-                want.lines().nth(line).unwrap_or("<eof>")
-            ));
-        }
+        failures.extend(first_difference(&name, luau(&report, &name), &want));
     }
-    assert!(compared >= 13, "expected outputs missing ({compared})");
+    assert!(compared >= 17, "expected outputs missing ({compared})");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// Where `got` first differs from TS5's `want`, described.
+fn first_difference(name: &str, got: &str, want: &str) -> Option<String> {
+    if got == want {
+        return None;
+    }
+    let line = got.lines().zip(want.lines()).position(|(a, b)| a != b).unwrap_or(0);
+    Some(format!(
+        "{name}: first difference at line {}\n  ours: {}\n  ts5:  {}",
+        line + 1,
+        got.lines().nth(line).unwrap_or("<eof>"),
+        want.lines().nth(line).unwrap_or("<eof>")
+    ))
 }
 
 /// A serializer's errors carry the TS transformer's text, at the macro call: a version that is not known when the
@@ -97,18 +103,45 @@ fn many_lists_a_union_in_written_order() {
     assert!(out.contains("local keyed = Modding.inspect({ \"alpha\", \"zeta\" })"), "{out}");
 }
 
-/// TSRS-GAP: the shapes whose field order depends on a mapped symbol's link rbxts-rs's checker does not expose yet are
-/// refused at their call, naming the type, rather than encoded in an order that may differ from TS5's: properties a
-/// spread copied out of a mapped type, and a mapped type with an `as` clause that may name a key otherwise than by the
-/// key itself (`K` in a true branch is narrowed; an `infer K` shadows it). The shapes read exactly, `as` clauses that
-/// keep or drop each key and a generic interface's mapped bases among them, are in `fixture_f4/src/mapped.ts`, compared
-/// with TS5's output.
+/// The field orders that follow a mapped property's links (`links.mappedType`, `links.keyType`), built on their own:
+/// properties a spread or an object rest copied out of a mapped type and a generic interface's instantiated mapped
+/// bases (`fixture_f4/src/spreads.ts`), and `as` clauses that rename keys, a true branch's narrowed `K`, an `infer K`
+/// shadowing it and several keys naming one field among them (`remaps.ts`). Both equal TS5's bytes.
 #[test]
-fn unexposed_mapped_links_are_refused() {
-    let Some(project) = Project::new(FIXTURE, "gap") else { return };
+fn mapped_links_match_ts5() {
+    let Some(project) = Project::new(FIXTURE, "links") else { return };
+    for entry in std::fs::read_dir(project.root.join("src")).unwrap() {
+        let path = entry.unwrap().path();
+        if !path.ends_with("spreads.ts") && !path.ends_with("remaps.ts") {
+            std::fs::remove_file(path).unwrap();
+        }
+    }
+    let report = project.build_with(Flamework::new());
+    assert_clean(&report);
+    let expected = fixture_dir(FIXTURE).join("expected");
+    let failures: Vec<String> = ["spreads.luau", "remaps.luau"]
+        .into_iter()
+        .filter_map(|name| {
+            let want = std::fs::read_to_string(expected.join(name)).unwrap().replace("\r\n", "\n");
+            first_difference(name, luau(&report, name), &want)
+        })
+        .collect();
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// RBXTS-GAP: an object rest lists its properties in the order of the type it was taken from, which rbxts-rs's
+/// TypeScript 5 property order does not rebuild for a rest yet: a rest of two runs or more (properties of different
+/// origins, or several that no one mapped type made) is refused, naming the type, mapped or not, and so is a type of
+/// several runs built from one (a spread of it, an interface extending it, a homomorphic mapped type over that,
+/// either nested in a container). A rest of one run (one property, or properties a single mapped type made) has an
+/// order that does not depend on the rest's list, and builds, as does a spread of it (`fixture_f4/src/spreads.ts`
+/// has TS5's bytes for both kinds of rest).
+#[test]
+fn a_multi_run_object_rest_is_refused() {
+    let Some(project) = Project::new(FIXTURE, "rest") else { return };
     std::fs::remove_dir_all(project.root.join("src")).unwrap();
     project.write(
-        "src/gap.ts",
+        "src/rest.ts",
         r#"import { Flamework, Serialization } from "@flamework-experimental/core";
 type u8 = Serialization.u8;
 interface Base {
@@ -116,54 +149,100 @@ interface Base {
 	alpha: string;
 	mid: boolean;
 }
-declare const picked: Pick<Base, "zeta" | "alpha">;
-const spreadPickValue = () => ({ first: 1 as u8, ...picked });
-export type SpreadPick = ReturnType<typeof spreadPickValue>;
-declare const recorded: Record<"zz" | "aa", u8>;
-const spreadRecValue = () => ({ ...recorded, k: true });
-export type SpreadRec = ReturnType<typeof spreadRecValue>;
+// A mapped type's properties and a written one.
 declare const omitted: Omit<Base, "mid">;
-const spreadOmitValue = () => ({ ...omitted, extra: 1 as u8 });
-export type SpreadOmit = ReturnType<typeof spreadOmitValue>;
-declare const chained: Partial<Pick<Base, "zeta" | "alpha">>;
-const spreadChainValue = () => ({ ...chained, n: 2 as u8 });
-export type SpreadChain = ReturnType<typeof spreadChainValue>;
-export type RemapRev = { [K in "a" | "b" as K extends "a" ? "z" : "y"]: u8 };
-export type RemapNum = { [K in 1 | 2 as K extends 1 ? "b" : "a"]: string };
-export type RemapMulti = { [K in "a" | "b" as K extends "a" ? "z1" | "z2" : "y"]: u8 };
-export type RemapTmpl = { [K in "b" | "a" as `x_${K}`]: u8 };
-export type TrueBranch = { [K in "c" | "b" | "a" as K extends "a" | "c" ? K : never]: u8 };
-export type Shadowed = { [K in "b" | "a" as K extends infer K ? K : never]: u8 };
-declare const remapped: RemapRev;
-const spreadRemapValue = () => ({ ...remapped, q: 1 as u8 });
-export type SpreadRemap = ReturnType<typeof spreadRemapValue>;
-
-export const a = Flamework.createSerializer<SpreadPick>();
-export const b = Flamework.createSerializer<SpreadRec>();
-export const c = Flamework.createSerializer<SpreadOmit>();
-export const d = Flamework.createSerializer<SpreadChain>();
-export const e = Flamework.createSerializer<RemapRev>();
-export const f = Flamework.createSerializer<RemapNum>();
-export const g = Flamework.createSerializer<RemapMulti>();
-export const h = Flamework.createSerializer<RemapTmpl>();
-export const i = Flamework.createSerializer<SpreadRemap>();
-export const j = Flamework.createSerializer<TrueBranch>();
-export const k = Flamework.createSerializer<Shadowed>();
+const spreadValue = () => ({ ...omitted, extra: 1 as u8 });
+declare const spread: ReturnType<typeof spreadValue>;
+const mixedValue = () => {
+	const { alpha: _alpha, ...rest } = spread;
+	return rest;
+};
+// No mapped type: a spread whose TS5 list (right operand first) differs from declaration order.
+const lateValue = () => ({ a: 1 as u8, ...late, c: 3 as u8 });
+declare const late: Late;
+interface Late {
+	b: u8;
+}
+declare const lated: ReturnType<typeof lateValue>;
+const plainValue = () => {
+	const { c: _c, ...rest } = lated;
+	return rest;
+};
+// No mapped type: an interface redeclaring a member of its base.
+interface A {
+	x: u8;
+	y: u8;
+}
+interface B extends A {
+	y: u8;
+	z: u8;
+}
+declare const b: B;
+const inheritedValue = () => {
+	const { z: _z, ...rest } = b;
+	return rest;
+};
+// One run each: properties one mapped type made, and a single property.
+declare const picked: Pick<Base, "zeta" | "alpha" | "mid">;
+const wholeValue = () => {
+	const { mid: _mid, ...rest } = picked;
+	return rest;
+};
+const singleValue = () => {
+	const { x: _x, y: _y, ...rest } = b;
+	return rest;
+};
+// Types built from a rest of several runs: TS5 lists VRI's as own, alpha, zeta, mid, TypeScript 7 by declaration.
+interface VRI extends Base {
+	own: u8;
+	alpha: string;
+}
+declare const vri: VRI;
+const restValue = () => {
+	const { mid: _m, ...rest } = vri;
+	return rest;
+};
+type Rest = ReturnType<typeof restValue>;
+declare const rest: Rest;
+const h1Value = () => ({ ...rest, k: true });
+type H1 = ReturnType<typeof h1Value>;
+interface H2 extends Rest {
+	k: boolean;
+}
+type H3 = Readonly<H1>;
+type H4 = { list: H1[] };
+declare const h1: H1;
+const h5Value = () => ({ q: 1 as u8, ...h1 });
+const vr25Value = () => {
+	const { mid: _m, ...rest } = vri;
+	return { ...rest, k: true };
+};
+// Built from a rest of one run: exact.
+declare const whole: ReturnType<typeof wholeValue>;
+const fromWholeValue = () => ({ k: true, ...whole });
+export const mixed = Flamework.createSerializer<ReturnType<typeof mixedValue>>();
+export const plain = Flamework.createSerializer<ReturnType<typeof plainValue>>();
+export const inherited = Flamework.createSerializer<{ inner: ReturnType<typeof inheritedValue> }>();
+export const wholeS = Flamework.createSerializer<ReturnType<typeof wholeValue>>();
+export const single = Flamework.createSerializer<ReturnType<typeof singleValue>>();
+export const fromWhole = Flamework.createSerializer<ReturnType<typeof fromWholeValue>>();
+export const h1s = Flamework.createSerializer<H1>();
+export const h2s = Flamework.createSerializer<H2>();
+export const h3s = Flamework.createSerializer<H3>();
+export const h4s = Flamework.createSerializer<H4>();
+export const h5s = Flamework.createSerializer<ReturnType<typeof h5Value>>();
+export const vr25 = Flamework.createSerializer<ReturnType<typeof vr25Value>>();
 "#,
     );
     let report = project.build_with(Flamework::new());
     let errors = errors(&report);
-    let refused: Vec<&String> = errors.iter().filter(|e| e.contains("flamework-rs does not support")).collect();
-    assert_eq!(refused.len(), 11, "{errors:#?}");
-    assert_eq!(errors.len(), 11, "{errors:#?}");
-    let hint = "Write the type out as an interface or an object type instead";
-    assert!(refused.iter().all(|e| e.contains(hint)), "{errors:#?}");
-    let spread = refused.iter().filter(|e| e.contains("as when a spread copies it")).count();
-    let remap = refused.iter().filter(|e| e.contains("a mapped type with an `as` clause")).count();
-    assert_eq!((spread, remap), (5, 6), "{errors:#?}");
-    for name in ["RemapRev", "RemapNum", "RemapMulti", "RemapTmpl", "TrueBranch", "Shadowed"] {
-        assert!(refused.iter().any(|e| e.contains(&format!("'{name}'"))), "{name}: {errors:#?}");
+    assert_eq!(errors.len(), 9, "{errors:#?}");
+    for text in ["{ zeta: u8; extra: u8; }", "{ a: u8; b: u8; }", "{ x: u8; y: u8; }"] {
+        let refused = format!("flamework-rs does not support '{text}' yet: it is an object rest");
+        assert!(errors.iter().any(|e| e.contains(&refused)), "{text}: {errors:#?}");
     }
+    let built = errors.iter().filter(|e| e.contains("yet: it is built from an object rest")).count();
+    assert_eq!(built, 6, "H1 to H5 and VR25: {errors:#?}");
 }
 
 /// TSRS-GAP: a declared property whose name starts with U+007F (`"\u007fab"`) is one rbxts-rs's checker takes for a
