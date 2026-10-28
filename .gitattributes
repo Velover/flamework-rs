@@ -1,0 +1,4 @@
+# Check out every text file with LF: parity fixtures and expected outputs are compared byte for byte, and the
+# machine default core.autocrlf=true would turn them into CRLF in a fresh checkout. No fixture needs CRLF;
+# crates/flamework_rs/tests/data keeps its own `* -text` (parity data, byte for byte as committed).
+* text=auto eol=lf

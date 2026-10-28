@@ -1,0 +1,5 @@
+/target
+# every other build folder: target-*, per-worktree target dirs
+/target*/
+# local overrides (a [patch] onto a local rbxts-rs, env for tests): never committed
+/.cargo/config.toml

@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+license = "MIT"
+
+# rbxts-rs (the compiler and its plugin API) and tsrs, as git dependencies pinned by rev. The tsrs URL and rev must be
+# exactly the ones rbxts-rs's own Cargo.toml names at the pinned rbxts-rs rev: Cargo does not enforce one tsrs copy, and
+# a mismatch builds a second one that only fails later with E0308 (`tools/check-deps.sh` catches it). Never `branch =`.
+# To work against a local rbxts-rs checkout, see the README ("Developing against a local rbxts-rs").
+# Cargo.lock started as a copy of rbxts-rs's lock file, so the transitive versions match what rbxts-rs tests with.
+[workspace.dependencies]
+rbxts_plugin = { git = "file:///E:/Projects/TS/Flamework/rbxts-rs", rev = "1195de16c6fd4127feb0165cf1848a754f6a6995" }
+rbxts_luau = { git = "file:///E:/Projects/TS/Flamework/rbxts-rs", rev = "1195de16c6fd4127feb0165cf1848a754f6a6995" }
+rbxts_project = { git = "file:///E:/Projects/TS/Flamework/rbxts-rs", rev = "1195de16c6fd4127feb0165cf1848a754f6a6995" }
+rbxts_transform = { git = "file:///E:/Projects/TS/Flamework/rbxts-rs", rev = "1195de16c6fd4127feb0165cf1848a754f6a6995" }
+rbxts_cli = { git = "file:///E:/Projects/TS/Flamework/rbxts-rs", rev = "1195de16c6fd4127feb0165cf1848a754f6a6995" }
+tsrs_core = { git = "file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs", rev = "92248ec55e1335c7c52e7de213666dbfff75c2e3" }
+tsrs_ast = { git = "file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs", rev = "92248ec55e1335c7c52e7de213666dbfff75c2e3" }
+tsrs_checker = { git = "file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs", rev = "92248ec55e1335c7c52e7de213666dbfff75c2e3" }
+tsrs_compiler = { git = "file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs", rev = "92248ec55e1335c7c52e7de213666dbfff75c2e3" }
+tsrs_diagnostics = { git = "file:///E:/Projects/TS/Flamework/roblox-ts-test/tsrs", rev = "92248ec55e1335c7c52e7de213666dbfff75c2e3" }
+flamework_rs = { path = "crates/flamework_rs" }
+mimalloc-safe = { version = "0.1.67", features = ["v3", "no_thp"] }
+# preserve_order: Rojo trees iterate children in file order, as JavaScript objects do.
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+# JavaScript number formatting (Number#toString), already in the lock through tsrs_core.
+dragonbox_ecma = "0.1.12"
+
+# A debug checker is unusably slow, so even dev builds are optimised (as in tsrs and rbxts-rs).
+[profile.dev]
+opt-level = 3
+lto = "off"
+codegen-units = 256
+incremental = true
+
+# Luau (rbxts-rs's rbxts_luau_check, built by luau0-src) without its asserts in every profile: luau0-src turns them on
+# under debug_assertions, and a failed one ends in __debugbreak (a crash) instead of an error. A build dependency, so
+# this package override (it wins over build-override) is what reaches it.
+[profile.dev.package.luau0-src]
+debug-assertions = false
+
+# Measurements: release optimisation without LTO, like tsrs's `ci` profile.
+[profile.measure]
+inherits = "release"
+lto = "off"
+codegen-units = 16
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"

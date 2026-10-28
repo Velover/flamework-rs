@@ -1,5 +1,8 @@
 //! Flamework's transformer as a compiled-in rbxts-rs plugin (DESIGN §10).
 //!
+//! `DESIGN §n` references here and in the other crates are to rbxts-rs's design document, which this repository
+//! does not hold.
+//!
 //! F0, the foundation that needs no compiler:
 //! - [`config`]: `flamework.config.json` (find, read, substitute the environment, coerce, validate) and the tsconfig
 //!   entry check, with the TS transformer's error texts;
