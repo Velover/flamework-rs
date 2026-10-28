@@ -6,7 +6,8 @@
 //! sources (`seams.ts`: synthesized strings, TS5's property order, the hoisted-metadata comment ahead of the TS
 //! statement, `{@link}` text; `ünï.ts`: an id with non-ASCII characters). It equals TS5's output but for
 //! - `hashes.luau`: `Modding.Hash` is a fresh hash every clean build (TS5: a random uuid; here: derived from a
-//!   per-build seed), and `flamework.build` has no `stringHashes` table (DESIGN §10.3).
+//!   per-build seed), and `flamework.build` has no `stringHashes` table (DESIGN §10.3) but keeps that seed as
+//!   `buildSeed`, so that a build that reuses it derives the same hashes.
 
 #![cfg(windows)]
 
@@ -39,15 +40,27 @@ fn full_mode_matches_the_expected_outputs() {
     assert_clean(&report);
     let failures: Vec<String> = compare_expected(&project, &report, FIXTURE)
         .into_iter()
-        .filter(|f| !f.starts_with("shared/hashes.luau"))
+        .filter(|f| !f.starts_with("shared/hashes.luau") && !f.starts_with("flamework.build:"))
         .collect();
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 
-    // `Modding.Hash`: two different uuids, derived from this build's seed.
+    // `Modding.Hash`: two different uuids, derived from this build's seed, which `flamework.build` keeps as `buildSeed`
+    // (before `metadata`) for the builds that reuse it; but for that line it is the expected file.
     let hashes = luau(&report, "shared/hashes.luau");
     let found = uuids_in(hashes);
     assert_eq!(found.len(), 2, "{hashes}");
     assert_ne!(found[0], found[1]);
+    let build = project.read("flamework.build");
+    let seed_line = build.lines().find(|l| l.starts_with("\t\"buildSeed\": ")).expect("the hash seed is kept");
+    let seed = seed_line.trim_start_matches("\t\"buildSeed\": \"").trim_end_matches("\",");
+    let seed = flamework_rs::uuid::Namespace::parse(seed).unwrap();
+    assert_eq!(found, [seed.v5("@:playerJoined"), seed.v5("remotes:playerJoined")]);
+    let expected = std::fs::read_to_string(support::project::fixture_dir(FIXTURE).join("expected/flamework.build"))
+        .unwrap()
+        .replace("\r\n", "\n");
+    let without_seed: Vec<&str> = build.lines().filter(|l| *l != seed_line).collect();
+    assert_eq!(without_seed.join("\n"), expected);
+    assert!(build.find("\"buildSeed\"").unwrap() < build.find("\"metadata\"").unwrap());
 
     // Nothing is left to a later milestone in this fixture.
     let warnings = report.warnings.join("\n");

@@ -20,7 +20,8 @@
 //!
 //! F1, the plugin ([`Flamework`], DESIGN §10.7): ids and decorators.
 //! - [`plugin`]: the `Plugin` / `PluginInstance` impls, [`FwFilePart`];
-//! - [`setup`]: [`FwShared`] from the package, config, env and build infos, with the version check;
+//! - [`setup`]: [`FwShared`] from the package, config, env and build infos, with the version check, reusing the last
+//!   committed `flamework.build` ([`FwState`]) in every build but a clean one;
 //! - [`metadata`]: JSDoc `@metadata` requests with `{@link}` entries;
 //! - [`uid`]: type and declaration ids, late in `short` / `tiny` / `obfuscated` mode;
 //! - [`class_hook`]: `Reflect.defineMetadata` at the static-block position, and the decorator checks;
@@ -32,7 +33,8 @@
 //! - [`inputs`]: reading files and variables as recorded build inputs;
 //! - [`part_codec`]: [`FwFilePart`] as bytes, for the compiler's incremental state.
 //!
-//! Clean builds only (incremental and watch: TODO(S2)).
+//! Clean, incremental and watch builds: an incremental build and a watch rebuild reuse the last `flamework.build` (its
+//! ids, salt and seeds), and start a new one where the TS transformer refuses changed inputs ([`setup`]).
 
 pub mod build_info;
 pub mod class_hook;
@@ -67,7 +69,7 @@ pub use macro_type::{
     Constituents, Field, IndexSignature, Literal, MacroCx, MacroType, MacroTypes, Primitive, SignatureInfo,
     TupleElement,
 };
-pub use plugin::{Flamework, FwFilePart, FwInstance, FwShared};
+pub use plugin::{Flamework, FwFilePart, FwInstance, FwShared, FwState};
 
 /// The Flamework version this transformer is, and writes into `flamework.build`. Every
 /// `@flamework-experimental` package is released at one version.

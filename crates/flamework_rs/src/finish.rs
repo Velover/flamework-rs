@@ -3,6 +3,11 @@
 //! this build's `flamework.build`, the late ids are resolved, and a game gets
 //! `include/flamework/{globs,config,paths}.json`.
 //!
+//! It starts from the build info in the persistent state ([`FwState`]: what setup made, or the last committed one in a
+//! watch rebuild that kept its `Shared`), keeps its id table, and makes the per-file records (`metadata`, `inputs.env`)
+//! again from every current file's part, so the result is the one a clean build seeded with that state makes. The
+//! new `flamework.build` goes back into the state.
+//!
 //! Every write goes through [`FinishCx`]: the compiler commits them in its one write phase, only when the build has
 //! no errors. Every read of the disk here goes through the compiler, recorded, so that watch runs `finish` again when
 //! an answer changes and its warnings equal a clean build's: the glob walks (`FinishCx::record_glob`), the path
@@ -11,6 +16,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
+use std::sync::atomic::Ordering;
 
 use rbxts_plugin::{Fatal, FileIndex, FinishCx, Utf16Pos};
 
@@ -19,7 +25,7 @@ use crate::config;
 use crate::inputs::Inputs;
 use crate::json::{self, JsObject, JsValue};
 use crate::place_source::{SourcePathState, find_place_source, find_source_path};
-use crate::plugin::{FwFilePart, FwShared, PathEvent};
+use crate::plugin::{FwFilePart, FwShared, FwState, PathEvent};
 use crate::{glob, node_path};
 
 /// The include JSON files, in the order the TS transformer handles them.
@@ -27,11 +33,21 @@ const INCLUDE_FILES: [&str; 3] = ["globs.json", "config.json", "paths.json"];
 
 pub(crate) fn finish(
     shared: &FwShared,
+    state: &mut FwState,
     parts: &[(FileIndex, &FwFilePart)],
     cx: &mut FinishCx<'_>,
 ) -> Result<(), Fatal> {
     let start = std::time::Instant::now();
-    let mut info: BuildInfo = shared.build_info.clone();
+    let data = state.build_info.clone().unwrap_or_else(|| shared.build_info.data().clone());
+    let mut info = BuildInfo::from_data(shared.build_info.path.clone(), data);
+    for child in shared.build_info.children() {
+        info.add_build_info(child.clone());
+    }
+    info.forget_file_records();
+    // The `Modding.Hash` seed, kept once a file has used one (under obfuscation it is the build seed, there already).
+    if shared.hash_used.load(Ordering::Relaxed) && info.recorded_build_seed().is_none() {
+        info.set_build_seed(shared.hash_seed.as_str()).map_err(Fatal::new)?;
+    }
 
     // Ids, in transform order: the sequence one checker transforming the files in that order makes (DESIGN §10.4).
     let resolved = shared.ids.assign(&mut info, parts.iter().map(|(_, part)| part.new_ids.as_slice()));
@@ -70,6 +86,8 @@ pub(crate) fn finish(
 
     // flamework.build, `JSON.stringify(info, undefined, "\t")`.
     cx.write_state_file(node_path::join(&[&shared.project_dir, BUILD_INFO_NAME]), info.to_json().into_bytes());
+    state.build_info = Some(info.data().clone());
+    state.hash_seed = Some(shared.hash_seed.as_str().to_owned());
 
     cx.info(&format!("Flamework artifacts finished in {}ms", start.elapsed().as_millis()));
 

@@ -355,8 +355,8 @@ pub fn load_project_config_with(
 
 /// `fingerprintEmitConfig`: a hash of the options in the config file that shape the code the transformer emits
 /// into each file: the whole `transformer` section, the `serialization` section and `networking.serialization`.
-/// `flamework.build` records it as `inputs.config`; a build that reuses that file refuses another
-/// (`TransformState.refuseChangedInputs`; rbxts-rs: TODO(S2), incremental builds).
+/// `flamework.build` records it as `inputs.config`; a build that finds another there starts a new `flamework.build`
+/// ([`crate::build_info::changed_inputs`]; the TS transformer refuses it in `TransformState.refuseChangedInputs`).
 pub fn fingerprint_emit_config(loaded: &LoadedProjectConfig) -> String {
     let mut snapshot = JsObject::new();
     snapshot.insert("transformer", loaded.config.clone());

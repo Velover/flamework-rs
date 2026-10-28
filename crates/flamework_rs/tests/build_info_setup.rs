@@ -158,13 +158,13 @@ fn package_build_infos_are_found_above_the_programs_files_once_each() {
 #[test]
 fn the_project_version_check_names_both_versions() {
     let mut info = BuildInfo::new("x");
-    assert!(check_project_version(&info, "out").is_ok());
+    assert!(check_project_version(&info, "out", None).is_ok());
     info = BuildInfo::from_value(
         "x",
         flamework_rs::json::parse(&build_info_text("2.0.0-alpha.1", "p")).unwrap(),
     );
     assert_eq!(
-        check_project_version(&info, "out").unwrap_err(),
+        check_project_version(&info, "out", None).unwrap_err(),
         [
             "Project was compiled on different version of Flamework.".to_owned(),
             "Please recompile by deleting the out directory".to_owned(),
@@ -172,6 +172,169 @@ fn the_project_version_check_names_both_versions() {
             "Previous Flamework Version: 2.0.0-alpha.1".to_owned(),
         ]
     );
+    // An incremental project names its build info instead (`transformer.ts`).
+    assert_eq!(
+        check_project_version(&info, "out", Some("tsconfig.rbxts-rs.buildinfo")).unwrap_err()[1],
+        "This is an incremental build, which recompiles only the files that changed. Delete tsconfig.rbxts-rs.buildinfo and build again: the next build compiles every file."
+    );
+}
+
+/// The scan takes the project's own `flamework.build` as there without reading it (it is the plugin's state file,
+/// which setup may not depend on), so it stops at the project directory whether the file exists or not.
+#[test]
+fn the_scan_never_reads_the_projects_own_build_info() {
+    struct Recorded(Vec<String>);
+    impl flamework_rs::inputs::Inputs for Recorded {
+        fn read(&mut self, path: &str) -> Option<String> {
+            self.0.push(path.replace('\\', "/"));
+            std::fs::read_to_string(path).ok()
+        }
+        fn env(&mut self, _: &str) -> Option<String> {
+            None
+        }
+    }
+    let t = Tree::new("own");
+    // One above the game, within the scan's reach from `game/src`: a first build (no own file) would find it in TS.
+    t.write("flamework.build", &build_info_text(VERSION, "above"));
+    t.write("game/package.json", r#"{"name":"game"}"#);
+    let own = t.path("game/flamework.build");
+    let owned = t.ceiling();
+    for exists in [false, true] {
+        if exists {
+            t.write("game/flamework.build", &build_info_text(VERSION, "game"));
+        }
+        let mut inputs = Recorded(Vec::new());
+        let mut scan = CandidateScan::with_ceiling(&owned);
+        let candidates = scan.candidates_with(&mut inputs, [t.path("game/src").as_str()], &own);
+        assert_eq!(candidates, Vec::<String>::new(), "exists: {exists}");
+        assert_eq!(inputs.0, [t.path("game/src/flamework.build").replace('\\', "/")], "exists: {exists}");
+    }
+}
+
+/// Per file, the variables `Flamework.env` inlined there and their values.
+type EnvUses<'a> = [(&'a str, &'a [(&'a str, Option<&'a str>)])];
+
+/// A build info with recorded inputs: `mode`, the config hash `config` and `inputs.env`.
+fn recorded(mode: &str, config: &str, env: &EnvUses<'_>) -> BuildInfo {
+    let mut info = BuildInfo::new("x");
+    info.set_config_input(config);
+    info.set_id_generation_mode(mode);
+    for (origin, uses) in env {
+        for (name, value) in *uses {
+            info.add_env_input(origin, name, &flamework_rs::env::hash_env_value(*value));
+        }
+    }
+    info
+}
+
+/// `refuseChangedInputs`'s comparison, which under rbxts-rs starts a new table instead of refusing: the mode before
+/// the config (never both, as TS names them), nothing for unrecorded inputs or another version, and the inlined
+/// variables never (the compiler transforms again the files that read a changed one).
+#[test]
+fn changed_inputs_name_the_mode_before_the_config() {
+    use flamework_rs::build_info::changed_inputs;
+    let info = recorded("full", "c1", &[("src/b.ts", &[("ZED", Some("1"))])]);
+    assert!(changed_inputs(&info, "full", "c1").is_empty());
+    assert_eq!(changed_inputs(&info, "short", "c2"), ["idGenerationMode is 'short', and was 'full'"]);
+    assert_eq!(
+        changed_inputs(&info, "full", "c2"),
+        ["an option in flamework.config.json that shapes the emitted code changed (the transformer or serialization section, or networking.serialization)"]
+    );
+    assert!(changed_inputs(&BuildInfo::new("x"), "short", "c2").is_empty());
+    let other = BuildInfo::from_value(
+        "x",
+        flamework_rs::json::parse(
+            "{\"version\":1,\"flameworkVersion\":\"2.0.0-alpha.1\",\"identifiers\":{},\"idGenerationMode\":\"full\"}",
+        )
+        .unwrap(),
+    );
+    assert!(changed_inputs(&other, "short", "c2").is_empty());
+}
+
+/// The file the remedies name: rbxtsc-fw's incremental state beside roblox-ts's build info, as rbxts-rs names it.
+#[test]
+fn the_remedies_name_the_incremental_state() {
+    use flamework_rs::build_info::incremental_state_name;
+    assert_eq!(
+        incremental_state_name("E:/p", Some("E:/p/out/tsconfig.rbxtsc.tsbuildinfo")).as_deref(),
+        Some("out/tsconfig.rbxts-rs.buildinfo")
+    );
+    assert_eq!(
+        incremental_state_name("E:/p", Some("E:/p/tsconfig.rbxtsc.tsbuildinfo")).as_deref(),
+        Some("tsconfig.rbxts-rs.buildinfo")
+    );
+    assert_eq!(incremental_state_name("E:/p", Some("E:/p/b/x.tsbuildinfo")).as_deref(), Some("b/x.rbxts-rs.buildinfo"));
+    assert_eq!(incremental_state_name("E:/p", None), None);
+}
+
+/// The project's own `flamework.build` read for reuse: refused as the TS refuses it, with the remedy of an incremental
+/// build or a watcher, and the dirty-environment stop.
+#[test]
+fn an_unusable_own_build_info_is_refused_with_the_ts_texts() {
+    use flamework_rs::build_info::{dirty_environment, own_build_info_remedy};
+    let incremental = own_build_info_remedy(Some("tsconfig.rbxts-rs.buildinfo"));
+    assert_eq!(
+        incremental,
+        ["This incremental build reads it to keep the ids of the files it does not recompile. Delete tsconfig.rbxts-rs.buildinfo and build again: a full build does not read flamework.build, and writes a new one."]
+    );
+    assert_eq!(
+        own_build_info_remedy(None),
+        ["This watcher reads it on every rebuild, to keep the ids of the files it does not recompile. Restart the watcher: a full build does not read flamework.build, and writes a new one."]
+    );
+    let refused = |text: &str| BuildInfo::from_text("x", text, "flamework.build", &incremental).unwrap_err().0;
+    assert_eq!(
+        refused("{\"version\": 1,"),
+        // node 23's `JSON.parse` message.
+        format!(
+            "Flamework cannot use flamework.build: it is not valid JSON (Expected double-quoted property name in JSON at position 14 (line 1 column 15)).\n{}",
+            incremental[0]
+        )
+    );
+    assert!(refused("  \n").starts_with("Flamework cannot use flamework.build: it is empty.\n"));
+    assert!(refused("{}").starts_with("Flamework cannot use flamework.build: it does not have the shape Flamework writes ("));
+    // A byte order mark is dropped, as `ts.sys.readFile` drops it.
+    assert!(BuildInfo::from_text("x", &format!("\u{feff}{}", build_info_text(VERSION, "p")), "flamework.build", &[]).is_ok());
+    assert_eq!(
+        dirty_environment(Some("tsconfig.rbxts-rs.buildinfo")),
+        [
+            "Flamework cannot be built in a dirty environment.",
+            "This incremental build has no flamework.build to match the files it does not recompile. Delete tsconfig.rbxts-rs.buildinfo and build again.",
+        ]
+    );
+}
+
+/// What `finish` makes again from the file parts goes, the rest keeps its place; `env_inputs` reads `inputs.env` back.
+#[test]
+fn a_reused_build_info_forgets_only_the_per_file_records() {
+    let mut info = recorded("short", "c1", &[("src/a.ts", &[("A", Some("1")), ("B", None)])]);
+    info.salt();
+    info.add_identifier("p:out/a@A", "a@A{x}").unwrap();
+    info.add_path_use("src/a.ts", &flamework_rs::build_info::PathUse {
+        path: "src/x".into(),
+        macro_name: "registerProviders".into(),
+        line: 1,
+        column: 1,
+        raises: false,
+    });
+    assert_eq!(
+        info.env_inputs(),
+        [("src/a.ts".to_owned(), vec![
+            ("A".to_owned(), flamework_rs::env::hash_env_value(Some("1"))),
+            ("B".to_owned(), "unset".to_owned())
+        ])]
+    );
+    info.forget_file_records();
+    let data = info.data();
+    assert_eq!(
+        data.keys().cloned().collect::<Vec<_>>(),
+        ["version", "flameworkVersion", "identifiers", "inputs", "idGenerationMode", "salt"]
+    );
+    assert!(info.env_inputs().is_empty());
+    assert_eq!(info.config_input(), Some("c1"));
+    assert_eq!(info.identifier_from_internal("p:out/a@A").as_deref(), Some("a@A{x}"));
+    // The object round-trips through the persistent state.
+    let again = BuildInfo::from_data("x", data.clone());
+    assert_eq!(again.to_json(), info.to_json());
 }
 
 #[test]

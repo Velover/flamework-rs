@@ -5,11 +5,27 @@
 //! Everything is read through the compiler ([`SetupCx::read_input`] / [`SetupCx::env`]), so every file and variable
 //! read here is a build input.
 //!
-//! Clean builds only: every build starts from a new `flamework.build`, as a TS5 full build does (it rotates the salt
-//! and the build seed). Reusing the previous one (incremental builds and watch rebuilds, with `refuseChangedInputs`
-//! and the project version check) is TODO(S2).
+//! **The previous `flamework.build`** (the TS transformer's `buildInfoRead`). A clean build starts from a new one, as
+//! a TS5 full build does: it rotates the salt and the build seed. Every other build reuses the last committed one, so
+//! the files it does not transform keep their ids, salt, build seed and `Modding.Hash` seed:
+//! - a watch rebuild that runs setup again: the committed [`FwState`], handed on in memory;
+//! - an incremental build in a new process, and a watch rebuild whose state file was deleted or edited (the compiler
+//!   hands a fresh state then): the file, read with [`SetupCx::read_persisted`] (`fromDirectory`, the project's own
+//!   file only) and refused when it cannot be used, with the TS texts;
+//! - a clean build the W1 harness seeds with a watcher's committed state (`rbxts_transform`'s
+//!   `BuildSession::with_seed`).
+//!
+//! A reused one whose id mode or code-shaping config differs from this build's ([`build_info::changed_inputs`]) is
+//! dropped for a new one, as a clean build makes it (new salt, build seed and hash seed). **This deviates from TS**,
+//! whose `refuseChangedInputs` stops the build because it cannot make roblox-ts recompile every file; under rbxts-rs
+//! those inputs are build inputs of setup, so a change already makes the compiler transform every file, and no file
+//! keeps what the old inputs emitted. A reused one of another version stops at the project version check
+//! ([`build_info::check_project_version`]). The `Shared` this makes holds a snapshot of it for the transform;
+//! `finish` works from the state, which a watch rebuild that keeps the `Shared` has advanced since (DESIGN §14).
 
-use rbxts_plugin::{Cx, Fatal, SetupCx};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use rbxts_plugin::{BuildKind, Cx, Fatal, SetupCx};
 
 use crate::build_info::{self, BUILD_INFO_NAME, BuildInfo, CandidateScan};
 use crate::config::{self, LoadedProjectConfig, TransformerConfig};
@@ -19,8 +35,23 @@ use crate::json::{self, JsObject, JsValue};
 use crate::packages::{CORE_PACKAGE, FLAMEWORK_SCOPE};
 use crate::{ProjectError, node_path, uuid};
 
-/// The test-only switch that pins the build seed (DESIGN §10.4), so obfuscated builds can be compared.
+/// The test-only switch that pins the build seed (DESIGN §10.4), so obfuscated builds can be compared: the build seed,
+/// the `Modding.Hash` seed and the salt (derived from it) of a new `flamework.build`; a reused one keeps its own.
 pub const FIXED_SEED_VAR: &str = "FLAMEWORK_RS_FIXED_SEED";
+
+/// The plugin's persistent state (`Plugin::State`, DESIGN §14): what the last committed build left in
+/// `flamework.build`, and the `Modding.Hash` seed. The compiler hands a copy to `setup` and `finish` and commits it
+/// with the build; a new process starts from `Default` and setup reloads the file.
+#[derive(Debug, Clone, Default)]
+pub struct FwState {
+    /// The project's `flamework.build` as an object, without the package build infos. `None` until a build has made
+    /// one in this process (or a seeded clean build was handed one).
+    pub build_info: Option<JsObject>,
+    /// The seed `Modding.Hash` derives from outside obfuscation (under obfuscation it is the build seed). It goes into
+    /// `flamework.build` as `buildSeed` only once a file has used one, as the TS transformer adds `stringHashes`
+    /// only then, so it is kept here as well for the watch rebuilds before that.
+    pub hash_seed: Option<String>,
+}
 
 /// What every hook reads, made once per build (DESIGN §10.1). Read-only during the transform.
 #[derive(Debug)]
@@ -41,15 +72,20 @@ pub struct FwShared {
     /// The whole config file.
     pub loaded: LoadedProjectConfig,
     pub ids: Ids,
-    /// This build's `flamework.build` as setup leaves it, with the package build infos as children.
+    /// This build's `flamework.build` as setup leaves it, with the package build infos as children. A snapshot for the
+    /// transform's id lookups: a kept `Shared` misses the ids later builds added, which the transform then asks for as
+    /// new ones and `finish` answers from [`FwState`].
     pub build_info: BuildInfo,
     /// The build seed, under obfuscation.
     pub build_seed: Option<uuid::Namespace>,
-    /// The namespace of `Modding.Hash` values: the build seed under obfuscation, else a seed of this build's own
-    /// (pinned by [`FIXED_SEED_VAR`]). The TS transformer made a random v4 per string and kept them in
-    /// `flamework.build`'s `stringHashes`; derived ones need no table (DESIGN §10.3, §10.4). TODO(S2): an
-    /// incremental build keeps it.
+    /// The namespace of `Modding.Hash` values: the build seed under obfuscation, else the reused build info's
+    /// `buildSeed` or [`FwState::hash_seed`], else a new seed (pinned by [`FIXED_SEED_VAR`]). The TS transformer made
+    /// a random v4 per string and kept them in `flamework.build`'s `stringHashes`; derived ones need only the seed
+    /// (DESIGN §10.3, §10.4), which a build that reuses `flamework.build` keeps.
     pub hash_seed: uuid::Namespace,
+    /// A file transformed with this `Shared` used `Modding.Hash` ([`FwShared::hash_string`]): `finish` records the
+    /// seed in `flamework.build`.
+    pub hash_used: AtomicBool,
     /// Whether the project has a Rojo project file (Flamework's `rojoResolver` is undefined without one).
     pub has_rojo: bool,
     /// Flamework's own path translator: roblox-ts's, with `.lua` outputs (`createPathTranslator`).
@@ -75,6 +111,7 @@ impl FwShared {
 
     /// `buildInfo.hashString`: a derived hash of `context:text` (`Modding.Hash`).
     pub fn hash_string(&self, text: &str, context: Option<&str>) -> String {
+        self.hash_used.store(true, Ordering::Relaxed);
         self.hash_seed.v5(&format!("{}:{text}", context.unwrap_or("@")))
     }
 
@@ -134,10 +171,64 @@ fn entry_object(cx: &SetupCx<'_>) -> JsObject {
     }
 }
 
-/// Runs setup for a clean build (the persistent state is unused until incremental builds: TODO(S2)).
-pub fn setup(cx: &mut SetupCx<'_>) -> Result<FwShared, Fatal> {
+/// The salt a pinned seed ([`FIXED_SEED_VAR`]) gives a new build info: 128 hex digits, as a random one has.
+fn pinned_salt(seed: &str) -> String {
+    let part = |n: u8| crate::sha::hex(&crate::sha::sha256(format!("flamework-rs salt {n}:{seed}").as_bytes()));
+    format!("{}{}", part(0), part(1))
+}
+
+/// The previous `flamework.build` this build reuses, if any (`setupBuildInfo`'s first half; module docs), and whether
+/// it was read from the disk.
+fn previous_build_info(
+    cx: &mut SetupCx<'_>,
+    state: &mut FwState,
+    path: &str,
+    state_file: Option<&str>,
+) -> Result<(Option<BuildInfo>, bool), Fatal> {
+    if let Some(data) = state.build_info.take() {
+        return Ok((Some(BuildInfo::from_data(path, data)), false));
+    }
+    // A full build does not reuse the previous flamework.build, so it does not read it either: one that cannot be
+    // used is replaced, not refused.
+    if cx.build_kind() == BuildKind::Clean {
+        return Ok((None, false));
+    }
+    let remedy = build_info::own_build_info_remedy(state_file);
+    let read = match cx.read_persisted(path) {
+        Ok(Some(bytes)) => String::from_utf8(bytes).ok(),
+        Ok(None) => {
+            // Only the files this build does not transform need the old table; the compiler transforms them all when
+            // the file it left is gone. A defensive stop: rbxts-rs's build session never reaches it (a missing
+            // flamework.build is a lost state file), only another `SetupBackend` host could.
+            if !cx.transforms_all_files() {
+                let mut lines = build_info::dirty_environment(state_file).into_iter();
+                let headline = lines.next().unwrap_or_default();
+                return Err(Fatal::new(headline).with_hint(lines.collect::<Vec<_>>().join("\n")));
+            }
+            return Ok((None, false));
+        }
+        Err(_) => None,
+    };
+    let info = match read {
+        Some(text) => BuildInfo::from_text(path, &text, BUILD_INFO_NAME, &remedy),
+        None => {
+            // `ts.sys.readFile` gave nothing: TS's "it could not be read".
+            let mut lines = vec![format!("Flamework cannot use {BUILD_INFO_NAME}: it could not be read.")];
+            lines.extend(remedy);
+            Err(ProjectError(lines.join("\n")))
+        }
+    }
+    .map_err(fatal)?;
+    Ok((Some(info), true))
+}
+
+/// Runs setup (module docs): `state` is the working copy of the persistent state, which setup leaves holding this
+/// build's `flamework.build` as `finish` starts from it.
+pub fn setup(cx: &mut SetupCx<'_>, state: &mut FwState) -> Result<FwShared, Fatal> {
     let services = cx.project();
     let project_dir = services.data.project_path.clone();
+    let state_file =
+        build_info::incremental_state_name(&project_dir, services.path_translator.build_info_output_path.as_deref());
     let include_dir = services.data.options.include_path.clone();
     let has_rojo = services.data.rojo_config_path.is_some();
     let path_translator = rbxts_project::path_translator::PathTranslator::new(
@@ -189,7 +280,11 @@ pub fn setup(cx: &mut SetupCx<'_>) -> Result<FwShared, Fatal> {
 
     let mut config = loaded.transformer();
     let build_info_path = node_path::join(&[&project_dir, BUILD_INFO_NAME]);
-    let mut build_info = BuildInfo::new(&build_info_path);
+    let (previous, read_from_disk) = previous_build_info(cx, state, &build_info_path, state_file.as_deref())?;
+    // `buildInfoRead`, and `buildInfoReused` (read as the process starts: an incremental build's first compilation).
+    let build_info_read = previous.is_some();
+    let mut build_info_reused = read_from_disk && cx.build_kind() == BuildKind::Incremental;
+    let mut build_info = previous.unwrap_or_else(|| BuildInfo::new(&build_info_path));
 
     // The package build infos above the program's files, once per directory.
     {
@@ -225,9 +320,41 @@ pub fn setup(cx: &mut SetupCx<'_>) -> Result<FwShared, Fatal> {
     let mode = config.effective_id_mode();
     config.id_generation_mode = Some(mode);
 
+    let config_input = config::fingerprint_emit_config(&loaded);
+    // `refuseChangedInputs`, deviating from TS (module docs): a reused table made from another id mode or code-shaping
+    // config is dropped for a new one, with a new salt and new seeds, as a clean build would make it. Both inputs are
+    // build inputs of setup, so the compiler transforms every file whenever they change: no file keeps what the old
+    // inputs emitted, where the TS transformer, which cannot make roblox-ts recompile them, has to stop the build.
+    let changes =
+        if build_info_read { build_info::changed_inputs(&build_info, mode.as_str(), &config_input) } else { Vec::new() };
+    if !changes.is_empty() {
+        if !cx.transforms_all_files() {
+            // Unreachable under rbxts-rs (the mode and the config are setup inputs); a host that breaks that stops
+            // here, as the TS transformer does, rather than mixing outputs of two inputs.
+            return Err(Fatal::new(format!(
+                "Flamework's inputs changed since flamework.build was written: {}.",
+                changes.join("; ")
+            ))
+            .with_hint(format!(
+                "This is an incremental build, which recompiles only the files that changed, so the others would keep \
+                 what the old inputs emitted. Delete {} and build again: the next build compiles every file.",
+                state_file.as_deref().unwrap_or("the incremental state file")
+            )));
+        }
+        cx.info(&format!(
+            "flamework.build was written from other inputs: {}. Every file is transformed, and flamework.build starts \
+             anew (new ids, salt and seeds).",
+            changes.join("; ")
+        ));
+        build_info = build_info.renewed();
+        build_info_reused = false;
+        state.hash_seed = None;
+    }
+
     // In the TS transformer's order (DESIGN §10.4): inputs, idGenerationMode, identifierPrefix, then salt and
-    // buildSeed, which TS adds at their first use and setup makes here; metadata comes last, in finish.
-    build_info.set_config_input(&config::fingerprint_emit_config(&loaded));
+    // buildSeed, which TS adds at their first use and setup makes here; metadata comes last, in finish. A reused
+    // build info keeps its keys where they are.
+    build_info.set_config_input(&config_input);
     build_info.set_id_generation_mode(mode.as_str());
 
     let obfuscation = config.obfuscation == Some(true);
@@ -237,6 +364,15 @@ pub fn setup(cx: &mut SetupCx<'_>) -> Result<FwShared, Fatal> {
             Some(
                 "A fixed salt gives every build the same obfuscated ids; leave it unset so each build gets fresh ones.",
             ),
+        );
+    }
+    if obfuscation && build_info_reused {
+        cx.warn(
+            "obfuscated ids were kept from the previous build",
+            Some(&format!(
+                "This is an incremental build, so files that do not recompile keep their ids and the rest have to match.\nDelete {} before a release build to rotate every id.",
+                state_file.as_deref().unwrap_or("the tsbuildinfo")
+            )),
         );
     }
 
@@ -280,37 +416,48 @@ pub fn setup(cx: &mut SetupCx<'_>) -> Result<FwShared, Fatal> {
         );
     }
 
+    // Salt and seeds: the reused build info's, else new ones. The pinned seed pins new ones only: the seeds, and a salt
+    // derived from it, so that a clean build with it equals an incremental build that started from one.
+    let pinned = cx.env(FIXED_SEED_VAR);
+    let pinned_error = |e: String| Fatal::new(format!("{FIXED_SEED_VAR} is not a uuid: {e}"));
     let salt = match (&config.salt, mode) {
         (Some(salt), _) => salt.clone(),
         (None, IdMode::Full) => String::new(),
-        (None, _) => build_info.salt(),
+        (None, _) => {
+            if build_info.recorded_salt().is_none()
+                && let Some(seed) = &pinned
+            {
+                build_info.set_salt(&pinned_salt(seed));
+            }
+            build_info.salt()
+        }
     };
     let build_seed = if obfuscation {
-        match cx.env(FIXED_SEED_VAR) {
-            Some(seed) => {
-                build_info.set_build_seed(&seed).map_err(|e| {
-                    Fatal::new(format!("{FIXED_SEED_VAR} is not a uuid: {e}"))
-                })?;
-                Some(build_info.build_seed())
-            }
-            None => Some(build_info.build_seed()),
+        if build_info.recorded_build_seed().is_none()
+            && let Some(seed) = &pinned
+        {
+            build_info.set_build_seed(seed).map_err(pinned_error)?;
         }
+        Some(build_info.build_seed())
     } else {
         None
     };
 
     let hash_seed = match &build_seed {
         Some(seed) => seed.clone(),
-        None => {
-            let pinned = cx.env(FIXED_SEED_VAR);
-            let text = pinned.unwrap_or_else(uuid::random_v4);
-            uuid::Namespace::parse(&text).map_err(|e| Fatal::new(format!("{FIXED_SEED_VAR} is not a uuid: {e}")))?
-        }
+        None => match build_info.recorded_build_seed().map(str::to_owned).or_else(|| state.hash_seed.clone()) {
+            // Recorded by this plugin: a uuid (`find_problem` refuses a `buildSeed` that is not one).
+            Some(kept) => uuid::Namespace::parse(&kept)
+                .map_err(|e| Fatal::new(format!("flamework: the kept hash seed is not a uuid: {e}")))?,
+            None => uuid::Namespace::parse(&pinned.unwrap_or_else(uuid::random_v4)).map_err(pinned_error)?,
+        },
     };
+    state.hash_seed = Some(hash_seed.as_str().to_owned());
 
-    // The project's flamework.build came from another version: only a reused one can (TODO(S2)); a fresh one never.
+    // The project's flamework.build came from another version: only a reused one can, and only one written by hand or
+    // by another toolchain, since rbxts-rs builds clean when the plugin version changes.
     let out_relative = node_path::relative(&project_dir, &out_dir_option).replace('\\', "/");
-    if let Err(lines) = build_info::check_project_version(&build_info, &out_relative) {
+    if let Err(lines) = build_info::check_project_version(&build_info, &out_relative, state_file.as_deref()) {
         let mut lines = lines.into_iter();
         let headline = lines.next().unwrap_or_default();
         return Err(Fatal::new(headline).with_hint(lines.collect::<Vec<_>>().join("\n")));
@@ -327,6 +474,8 @@ pub fn setup(cx: &mut SetupCx<'_>) -> Result<FwShared, Fatal> {
         salt,
     });
 
+    state.build_info = Some(build_info.data().clone());
+
     Ok(FwShared {
         project_dir,
         root_dir,
@@ -340,6 +489,7 @@ pub fn setup(cx: &mut SetupCx<'_>) -> Result<FwShared, Fatal> {
         build_info,
         build_seed,
         hash_seed,
+        hash_used: AtomicBool::new(false),
         has_rojo,
         path_translator,
     })

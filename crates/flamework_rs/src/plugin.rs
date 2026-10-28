@@ -1,15 +1,17 @@
 //! The `Flamework` plugin (DESIGN §10.1): the factory, the per-checker instance and the per-file part.
 //!
-//! - [`Flamework`]: `setup` ([`crate::setup`]) builds the read-only [`FwShared`]; `finish` ([`crate::finish`])
-//!   assigns the new ids in program order, resolves the late ids, expands the globs and queues the include JSON and
-//!   `flamework.build`.
+//! - [`Flamework`]: `setup` ([`crate::setup`]) builds the read-only [`FwShared`] from the persistent [`FwState`];
+//!   `finish` ([`crate::finish`]) assigns the new ids in transform order (roblox-ts's `getChangedFilePaths` order),
+//!   resolves the late ids, expands the globs and queues the include JSON and `flamework.build`, which it leaves in
+//!   the state too.
 //! - [`FwInstance`], one per checker: the class hook ([`crate::class_hook`]) and the call hook for user macros
 //!   ([`crate::macros`]), with this checker's metadata and decorator caches.
 //! - [`FwFilePart`], one per file: the ids it asked for first, its glob and path uses, and the macro sites it left to
 //!   later milestones. Only parts cross threads, so the output is the same for any checker count (DESIGN §10.4).
 //!
-//! Clean builds only: the persistent state is empty and every build is a clean one (TODO(S2): incremental and watch
-//! builds reuse the id table, salt and seed, and refuse changed inputs).
+//! The persistent state ([`FwState`]) is the last committed `flamework.build`: a clean build starts a new one, every
+//! other build reuses it (its id table, salt and seeds), unless the id mode or the code-shaping config changed, when
+//! it starts a new one where the TS transformer refuses the build ([`crate::setup`]).
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -27,7 +29,7 @@ use crate::ids::NewId;
 use crate::macro_type::{MacroType, MacroTypes};
 use crate::metadata::NodeMetadata;
 use crate::order::OrderKey;
-pub use crate::setup::FwShared;
+pub use crate::setup::{FwShared, FwState};
 
 /// The tag of a call whose callee is a user macro (`@metadata macro`).
 pub const TAG_MACRO: Tag = Tag(1);
@@ -175,7 +177,7 @@ impl FwInstance {
 
 impl Plugin for Flamework {
     type Shared = FwShared;
-    type State = ();
+    type State = FwState;
     type FilePart = FwFilePart;
     type Instance = FwInstance;
 
@@ -193,8 +195,8 @@ impl Plugin for Flamework {
         Some(crate::packages::TRANSFORMER_PACKAGE)
     }
 
-    fn setup(&self, cx: &mut SetupCx<'_>, _state: &mut ()) -> Result<Arc<FwShared>, Fatal> {
-        crate::setup::setup(cx).map(Arc::new)
+    fn setup(&self, cx: &mut SetupCx<'_>, state: &mut FwState) -> Result<Arc<FwShared>, Fatal> {
+        crate::setup::setup(cx, state).map(Arc::new)
     }
 
     fn instance(&self, shared: Arc<FwShared>, _checker: CheckerInfo) -> FwInstance {
@@ -211,11 +213,11 @@ impl Plugin for Flamework {
     fn finish(
         &self,
         shared: &FwShared,
-        _state: &mut (),
+        state: &mut FwState,
         parts: &[(FileIndex, &FwFilePart)],
         cx: &mut FinishCx<'_>,
     ) -> Result<(), Fatal> {
-        crate::finish::finish(shared, parts, cx)
+        crate::finish::finish(shared, state, parts, cx)
     }
 
     fn encode_file_part(&self, part: &FwFilePart) -> Option<Vec<u8>> {

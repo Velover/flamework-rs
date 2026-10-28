@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 
-use crate::inputs::{FsInputs, Inputs, strip_bom};
+use crate::inputs::{FsInputs, Inputs};
 use crate::json::{self, JsObject, JsValue};
 use crate::packages::{FLAMEWORK_SCOPE, TRANSFORMER_PACKAGE};
 use crate::{ProjectError, VERSION, node_path, schema, uuid};
@@ -163,20 +163,27 @@ impl BuildInfo {
         name: &str,
         remedy: &[String],
     ) -> Result<Self, ProjectError> {
-        let Some(text) = inputs.read(file).map(strip_bom) else {
+        let Some(text) = inputs.read(file) else {
             return Ok(BuildInfo::new(file));
         };
-        let text = Some(text);
-        if let Some(problem) = find_problem(text.as_deref()) {
+        BuildInfo::from_text(file, &text, name, remedy)
+    }
+
+    /// A `flamework.build` from the text of an existing file (a byte order mark is dropped), refused as
+    /// [`BuildInfo::from_path`] refuses it.
+    pub fn from_text(file: &str, text: &str, name: &str, remedy: &[String]) -> Result<Self, ProjectError> {
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        if let Some(problem) = find_problem(Some(text)) {
             let mut lines = vec![format!("Flamework cannot use {name}: {problem}.")];
             lines.extend(remedy.iter().cloned());
             return Err(ProjectError(lines.join("\n")));
         }
-        let value = text.as_deref().map(json::parse);
-        Ok(BuildInfo::from_value(
-            file,
-            value.and_then(Result::ok).unwrap_or(JsValue::Null),
-        ))
+        Ok(BuildInfo::from_value(file, json::parse(text).unwrap_or(JsValue::Null)))
+    }
+
+    /// A build info from the object [`BuildInfo::data`] gave (the plugin's persistent state), without children.
+    pub fn from_data(path: impl Into<String>, data: JsObject) -> Self {
+        BuildInfo::from_value(path, JsValue::Object(data))
     }
 
     /// The project's own build info: the one in `directory`, else the one at its package root. `None` when neither
@@ -243,6 +250,16 @@ impl BuildInfo {
         salt
     }
 
+    /// The recorded salt, if there is one.
+    pub fn recorded_salt(&self) -> Option<&str> {
+        self.string_field("salt").filter(|s| !s.is_empty())
+    }
+
+    /// Records the salt (a pinned one: `FLAMEWORK_RS_FIXED_SEED`, DESIGN §10.4).
+    pub fn set_salt(&mut self, salt: &str) {
+        self.data.insert("salt", JsValue::String(salt.to_owned()));
+    }
+
     /// A random seed that lives as long as this build info does: obfuscated callsite uuids and string hashes are
     /// derived from it. Made (a random v4 uuid) on first use, and also when the recorded one is not a uuid.
     pub fn build_seed(&mut self) -> uuid::Namespace {
@@ -257,7 +274,13 @@ impl BuildInfo {
             .unwrap_or_else(|_| unreachable!("random_v4 makes a valid uuid"))
     }
 
-    /// Pins the build seed (a test or `FLAMEWORK_RS_FIXED_SEED` build, DESIGN §10.4). Refuses one that is not a uuid,
+    /// The recorded build seed, if there is one.
+    pub fn recorded_build_seed(&self) -> Option<&str> {
+        self.string_field("buildSeed")
+    }
+
+    /// Pins the build seed (a test or `FLAMEWORK_RS_FIXED_SEED` build, DESIGN §10.4), or records the seed
+    /// `Modding.Hash` derived from (outside obfuscation, once a file has used one). Refuses one that is not a uuid,
     /// with npm uuid's message.
     pub fn set_build_seed(&mut self, seed: &str) -> Result<(), String> {
         uuid::Namespace::parse(seed)?;
@@ -269,6 +292,13 @@ impl BuildInfo {
     /// The version of Flamework that wrote this build info.
     pub fn flamework_version(&self) -> &str {
         self.string_field("flameworkVersion").unwrap_or("")
+    }
+
+    /// A new build info at the same path, with the same package build infos: what a clean build would have.
+    pub fn renewed(&self) -> BuildInfo {
+        let mut renewed = BuildInfo::new(self.path.clone());
+        renewed.children = self.children.clone();
+        renewed
     }
 
     /// Registers a package build info, which ids are read from.
@@ -539,9 +569,8 @@ impl BuildInfo {
     }
 
     /// Records the id generation mode. The identifier table is kept even when the mode differs from the recorded one
-    /// (`setIdGenerationMode` since 1a72fa1). In TS a build that reuses a table of another mode is refused before this
-    /// is called, by `refuseChangedInputs`. flamework_rs has no counterpart yet (TODO(S2)): setup always starts a
-    /// fresh table, so it must land together with reloading the previous build info.
+    /// (`setIdGenerationMode` since 1a72fa1): a table of another mode is never kept, as setup starts a new one first
+    /// ([`changed_inputs`]; the TS transformer refuses it in `refuseChangedInputs`).
     pub fn set_id_generation_mode(&mut self, mode: &str) {
         self.data
             .insert("idGenerationMode", JsValue::String(mode.to_owned()));
@@ -581,6 +610,35 @@ impl BuildInfo {
             .as_object_mut()
             .expect("inputs.env[origin] is an object")
             .insert(name, JsValue::String(hash.to_owned()));
+    }
+
+    /// `inputs.env`: per file, each variable `Flamework.env` inlined there with the hash of its value, in the
+    /// recorded order. For tests and tools: setup no longer compares the recorded variables (a changed one is a build
+    /// input of the files that read it, so the compiler transforms them again).
+    pub fn env_inputs(&self) -> Vec<(String, Vec<(String, String)>)> {
+        let Some(env) = self.data.get("inputs").and_then(|i| i.get("env")).and_then(JsValue::as_object) else {
+            return Vec::new();
+        };
+        env.iter()
+            .map(|(origin, uses)| {
+                let uses = uses
+                    .as_object()
+                    .into_iter()
+                    .flat_map(JsObject::iter)
+                    .filter_map(|(name, hash)| Some((name.clone(), hash.as_str()?.to_owned())))
+                    .collect();
+                (origin.clone(), uses)
+            })
+            .collect()
+    }
+
+    /// Forgets what `finish` makes again from the file parts of every current file: `metadata` (globs and path uses)
+    /// and `inputs.env`. A reused build info keeps its keys in their places otherwise; `metadata` comes back last.
+    pub fn forget_file_records(&mut self) {
+        self.data.remove("metadata");
+        if let Some(inputs) = self.data.get_mut("inputs").and_then(JsValue::as_object_mut) {
+            inputs.remove("env");
+        }
     }
 
     /// The whole object, for anything this API does not cover.
@@ -643,10 +701,17 @@ pub fn package_name_of_with(
 
 /// Finds the package build infos above the program's files (`findCandidateUpper`): from each file's directory,
 /// the first `flamework.build` in it or in one of its four parents. One cached answer per directory.
+///
+/// The project's own `flamework.build` ([`CandidateScan::candidates`]' `own_path`) is taken as there without being
+/// read. It is the plugin's state file, which `Shared` may not depend on (`rbxts_plugin::Plugin::Shared`), and a
+/// recorded read of it would make the build after the one that first writes it run setup and transform every file
+/// again. It is there in every build but a project's first (and one after it was deleted), where TS's
+/// `fs.existsSync` lets the scan go on above the project directory.
 #[derive(Debug, Default)]
 pub struct CandidateScan {
     cache: HashMap<String, Option<String>>,
     ceiling: Option<String>,
+    own: Option<String>,
 }
 
 impl CandidateScan {
@@ -659,6 +724,7 @@ impl CandidateScan {
         CandidateScan {
             cache: HashMap::new(),
             ceiling: Some(ceiling.to_owned()),
+            own: None,
         }
     }
 
@@ -678,7 +744,8 @@ impl CandidateScan {
             Some(cached) => cached.clone(),
             None => {
                 let candidate = node_path::join(&[start, BUILD_INFO_NAME]);
-                let found = inputs.exists(&candidate).then_some(candidate);
+                let own = self.own.as_deref().is_some_and(|own| are_paths_equal(&candidate, own));
+                let found = (own || inputs.exists(&candidate)).then_some(candidate);
                 self.cache.insert(start.to_owned(), found.clone());
                 found
             }
@@ -710,6 +777,7 @@ impl CandidateScan {
         file_directories: impl IntoIterator<Item = &'a str>,
         own_path: &str,
     ) -> Vec<String> {
+        self.own = Some(own_path.to_owned());
         let mut out: Vec<String> = Vec::new();
         for directory in file_directories {
             let Some(candidate) = self.find_upper_with(inputs, directory, 4) else {
@@ -842,11 +910,16 @@ pub fn load_package_build_infos_with(
 }
 
 /// The project's `flamework.build` came from another version (`transformer.ts`): the lines to print, the first in
-/// red. Only an incremental build reuses the previous `flamework.build`, so until rbxts-rs has those this cannot
-/// fire; `out_directory` is the output directory relative to the project, with forward slashes.
+/// red. Only a build that reuses the previous `flamework.build` can meet one (rbxts-rs starts a clean build itself
+/// when the plugin version changes, so in practice a file put there by hand or by another toolchain).
+///
+/// `out_directory` is the output directory relative to the project, with forward slashes; `state_file` is
+/// [`incremental_state_name`] of an incremental project (TS: `getTsBuildInfoPath(options) !== undefined`), which picks
+/// the remedy.
 pub fn check_project_version(
     build_info: &BuildInfo,
     out_directory: &str,
+    state_file: Option<&str>,
 ) -> Result<(), Vec<String>> {
     let previous = build_info.flamework_version();
     if previous == VERSION {
@@ -854,8 +927,85 @@ pub fn check_project_version(
     }
     Err(vec![
         "Project was compiled on different version of Flamework.".to_owned(),
-        format!("Please recompile by deleting the {out_directory} directory"),
+        match state_file {
+            Some(name) => format!(
+                "This is an incremental build, which recompiles only the files that changed. Delete {name} and build again: the next build compiles every file."
+            ),
+            None => format!("Please recompile by deleting the {out_directory} directory"),
+        },
         format!("Current Flamework Version: {VERSION}"),
         format!("Previous Flamework Version: {previous}"),
     ])
+}
+
+/// The file whose deletion makes the next build of an incremental project a clean one, relative to the project and
+/// with forward slashes, for the messages that ask for it to be deleted (TS's `buildInfoFileName`); `None` when the
+/// project is not incremental. `build_info` is roblox-ts's build info of the project
+/// (`PathTranslator::build_info_output_path`, `<base>.rbxtsc.tsbuildinfo`, which the TS transformer names), absolute.
+///
+/// Under rbxtsc-fw that is the compiler's incremental state, `<base>.rbxts-rs.buildinfo`: rbxts-rs neither writes nor
+/// reads roblox-ts's file. The name mirrors rbxts-rs's own naming (`rbxts_transform::build::state::state_path`: strip
+/// `.rbxtsc.tsbuildinfo`, else `.tsbuildinfo`, then append `.rbxts-rs.buildinfo`) until the plugin API has
+/// `SetupCx::incremental_state_path` (proposed). It depends on the project being incremental, not on whether this
+/// build writes its state (`--noWrite`, an `outDir` override), so the remedy is the same for every build of it.
+pub fn incremental_state_name(project_directory: &str, build_info: Option<&str>) -> Option<String> {
+    build_info.map(|file| {
+        let base = file.strip_suffix(".rbxtsc.tsbuildinfo").or_else(|| file.strip_suffix(".tsbuildinfo")).unwrap_or(file);
+        node_path::relative(project_directory, &format!("{base}.rbxts-rs.buildinfo")).replace('\\', "/")
+    })
+}
+
+/// `ownBuildInfoRemedy`: what to do when the project's own `flamework.build`, read to keep the ids of the files a
+/// build does not transform, cannot be used. `state_file`: [`incremental_state_name`].
+pub fn own_build_info_remedy(state_file: Option<&str>) -> Vec<String> {
+    vec![match state_file {
+        Some(name) => format!(
+            "This incremental build reads it to keep the ids of the files it does not recompile. Delete {name} and build again: a full build does not read flamework.build, and writes a new one."
+        ),
+        None => "This watcher reads it on every rebuild, to keep the ids of the files it does not recompile. Restart the watcher: a full build does not read flamework.build, and writes a new one.".to_owned(),
+    }]
+}
+
+/// The stop of an incremental build that has no `flamework.build` for the files it does not transform
+/// (`setupBuildInfo`, said as the version check says it): the headline (red) and the remedy. `state_file`:
+/// [`incremental_state_name`] (`"the tsbuildinfo"` without one, as the TS names it).
+pub fn dirty_environment(state_file: Option<&str>) -> Vec<String> {
+    vec![
+        "Flamework cannot be built in a dirty environment.".to_owned(),
+        format!(
+            "This incremental build has no flamework.build to match the files it does not recompile. Delete {} and build again.",
+            state_file.unwrap_or("the tsbuildinfo")
+        ),
+    ]
+}
+
+/// The inputs a reused `flamework.build`'s table was made from that differ from this build's, as `refuseChangedInputs`
+/// names them: the id generation mode (`mode`), else the code-shaping options of flamework.config.json (`config_input`,
+/// [`crate::config::fingerprint_emit_config`]). Empty when they agree, when the table did not record them, and for a
+/// table of another version (left to [`check_project_version`]).
+///
+/// **Not a refusal, unlike TS.** The TS transformer refuses such a table because "roblox-ts chooses which files to
+/// recompile before it loads the transformer, and nothing in these inputs is part of what it compares, so a full
+/// recompile cannot be started from here" (`transformState.ts`, `refuseChangedInputs`). Under rbxts-rs both are
+/// build inputs of setup (the config file and `.env` files through `SetupCx::read_input`, variables through
+/// `SetupCx::env`): a change makes the compiler transform every file, so setup starts a new `flamework.build`
+/// instead, as a clean build does (`crate::setup`).
+///
+/// TS's third input, the variables `Flamework.env` inlined, is not compared: their values change no table entry, and
+/// the compiler transforms again exactly the files that read a changed one (`Cx::env` reads are recorded per file),
+/// whose new parts make `inputs.env` again.
+pub fn changed_inputs(build_info: &BuildInfo, mode: &str, config_input: &str) -> Vec<String> {
+    if build_info.flamework_version() != VERSION {
+        return Vec::new();
+    }
+    let mut changes = Vec::new();
+    if let Some(recorded) = build_info.id_generation_mode().filter(|recorded| *recorded != mode) {
+        changes.push(format!("idGenerationMode is '{mode}', and was '{recorded}'"));
+    } else if build_info.config_input().is_some_and(|recorded| recorded != config_input) {
+        changes.push(
+            "an option in flamework.config.json that shapes the emitted code changed (the transformer or serialization section, or networking.serialization)"
+                .to_owned(),
+        );
+    }
+    changes
 }
