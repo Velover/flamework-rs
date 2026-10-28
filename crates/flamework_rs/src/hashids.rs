@@ -8,6 +8,7 @@ const SEPARATOR_DIV: f64 = 3.5;
 const GUARD_DIV: f64 = 12.0;
 const MODULO_PART: u64 = 100;
 
+/// An encoder for one salt and minimum length (`new Hashids(salt, minLength)`).
 #[derive(Debug, Clone)]
 pub struct Hashids {
     salt: Vec<char>,

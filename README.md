@@ -133,6 +133,11 @@ Where it differs from TS5's output in shape only, with the same behaviour:
   so nothing can see the difference.
 - **A comment at the end of a file** (after its last statement) is kept, where TS5 with Flamework's transformer
   drops it in every file of the project. Comments only.
+- **A `Flamework.createSerializer` call inside a method** can renumber the locals of a later property initializer's
+  send (names only).
+
+Where it reports a failing build differently:
+
 - **Type errors and Flamework errors in one file** with `noSemanticDiagnostics: true`: flamework-rs reports the type
   errors where TS5 reports the Flamework error. Diagnostics only; the build fails either way.
 

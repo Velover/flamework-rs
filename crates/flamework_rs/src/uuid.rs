@@ -83,6 +83,7 @@ impl Namespace {
         Namespace::parse(CALLSITE_NAMESPACE).unwrap_or_else(|_| unreachable!("a valid uuid"))
     }
 
+    /// The namespace's text, as given to [`Namespace::parse`].
     pub fn as_str(&self) -> &str {
         &self.text
     }

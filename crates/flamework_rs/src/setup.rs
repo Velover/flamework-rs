@@ -46,55 +46,55 @@ pub const FIXED_SEED_VAR: &str = "FLAMEWORK_RS_FIXED_SEED";
 pub struct FwState {
     /// The project's `flamework.build` as an object, without the package build infos. `None` until a build has made
     /// one in this process (or a seeded clean build was handed one).
-    pub build_info: Option<JsObject>,
+    pub(crate) build_info: Option<JsObject>,
     /// The seed `Modding.Hash` derives from outside obfuscation (under obfuscation it is the build seed). It goes into
     /// `flamework.build` as `buildSeed` only once a file has used one, as the TS transformer adds `stringHashes`
     /// only then, so it is kept here as well for the watch rebuilds before that.
-    pub hash_seed: Option<String>,
+    pub(crate) hash_seed: Option<String>,
 }
 
 /// What every hook reads, made once per build (DESIGN §10.1). Read-only during the transform.
 #[derive(Debug)]
 pub struct FwShared {
     /// The tsconfig's directory (`currentDirectory`).
-    pub project_dir: String,
+    pub(crate) project_dir: String,
     /// The directory of the package.json above it (`rootDirectory`): file ids and globs are relative to it.
-    pub root_dir: String,
-    pub package_name: String,
+    pub(crate) root_dir: String,
+    pub(crate) package_name: String,
     /// A game (an unscoped package name), as opposed to a package.
-    pub is_game: bool,
+    pub(crate) is_game: bool,
     /// `rootDirs`, else `[rootDir ?? currentDirectory]`: the project's own source roots.
-    pub root_dirs: Vec<String>,
+    pub(crate) root_dirs: Vec<String>,
     /// The include folder (`--includePath`), absolute.
-    pub include_dir: String,
+    pub(crate) include_dir: String,
     /// `transformer` options, with `idGenerationMode` and (for a package) `hashPrefix` filled in.
-    pub config: TransformerConfig,
+    pub(crate) config: TransformerConfig,
     /// The whole config file.
-    pub loaded: LoadedProjectConfig,
-    pub ids: Ids,
+    pub(crate) loaded: LoadedProjectConfig,
+    pub(crate) ids: Ids,
     /// This build's `flamework.build` as setup leaves it, with the package build infos as children. A snapshot for the
     /// transform's id lookups: a kept `Shared` misses the ids later builds added, which the transform then asks for as
     /// new ones and `finish` answers from [`FwState`].
-    pub build_info: BuildInfo,
+    pub(crate) build_info: BuildInfo,
     /// The build seed, under obfuscation.
-    pub build_seed: Option<uuid::Namespace>,
+    pub(crate) build_seed: Option<uuid::Namespace>,
     /// The namespace of `Modding.Hash` values: the build seed under obfuscation, else the reused build info's
     /// `buildSeed` or [`FwState::hash_seed`], else a new seed (pinned by [`FIXED_SEED_VAR`]). The TS transformer made
     /// a random v4 per string and kept them in `flamework.build`'s `stringHashes`; derived ones need only the seed
     /// (DESIGN §10.3, §10.4), which a build that reuses `flamework.build` keeps.
-    pub hash_seed: uuid::Namespace,
+    pub(crate) hash_seed: uuid::Namespace,
     /// A file transformed with this `Shared` used `Modding.Hash` ([`FwShared::hash_string`]): `finish` records the
     /// seed in `flamework.build`.
-    pub hash_used: AtomicBool,
+    pub(crate) hash_used: AtomicBool,
     /// Whether the project has a Rojo project file (Flamework's `rojoResolver` is undefined without one).
-    pub has_rojo: bool,
+    pub(crate) has_rojo: bool,
     /// Flamework's own path translator: roblox-ts's, with `.lua` outputs (`createPathTranslator`).
-    pub path_translator: rbxts_project::path_translator::PathTranslator,
+    pub(crate) path_translator: rbxts_project::path_translator::PathTranslator,
 }
 
 impl FwShared {
     /// `obfuscateText`: the text, or under obfuscation its derived hash (DESIGN §10.4).
-    pub fn obfuscate_text(&self, text: &str, context: Option<&str>) -> String {
+    pub(crate) fn obfuscate_text(&self, text: &str, context: Option<&str>) -> String {
         match &self.build_seed {
             Some(seed) if self.config.obfuscation == Some(true) => {
                 seed.v5(&format!("{}:{text}", context.unwrap_or("@")))
@@ -105,23 +105,23 @@ impl FwShared {
 
     /// `Flamework.env(name)` at transform time ([`crate::env::transform_env`]): what setup read from the `.env`
     /// files and the process, else the process environment through [`Cx::env`], recorded as an input of the file.
-    pub fn env(&self, cx: &mut Cx<'_>, name: &str) -> Option<String> {
+    pub(crate) fn env(&self, cx: &mut Cx<'_>, name: &str) -> Option<String> {
         crate::env::transform_env(&self.loaded.env, name, |name| cx.env(name))
     }
 
     /// `buildInfo.hashString`: a derived hash of `context:text` (`Modding.Hash`).
-    pub fn hash_string(&self, text: &str, context: Option<&str>) -> String {
+    pub(crate) fn hash_string(&self, text: &str, context: Option<&str>) -> String {
         self.hash_used.store(true, Ordering::Relaxed);
         self.hash_seed.v5(&format!("{}:{text}", context.unwrap_or("@")))
     }
 
     /// `getFileId`: a file relative to the package root, with forward slashes.
-    pub fn file_id(&self, file_name: &str) -> String {
+    pub(crate) fn file_id(&self, file_name: &str) -> String {
         node_path::relative(&self.root_dir, file_name).replace('\\', "/")
     }
 
     /// The `Reflect` import's specifier. Inside core itself, `Reflect` is imported by its relative module path.
-    pub fn reflect_specifier(&self, file_name: &str) -> String {
+    pub(crate) fn reflect_specifier(&self, file_name: &str) -> String {
         reflect_specifier(&self.package_name, &self.root_dir, file_name)
     }
 }

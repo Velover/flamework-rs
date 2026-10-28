@@ -9,7 +9,7 @@
 //!   With `transformer.optimizations.guardGenerationDedupLimit` set, types met that many times are declared once
 //!   as locals ahead of the TS statement around the call (the TS's `prereqList`), or kept with the guard in a
 //!   function of their own when the scope has no room for them;
-//! - [`guard_fields`] (`buildGuardsFromType`): one guard per property (component attributes);
+//! - [`guard_fields_in_context`] (`buildGuardsFromType`): one guard per property (component attributes);
 //! - [`tuple_guards`] (`buildTupleGuardsIntrinsic`): the `tuple-guards` intrinsic, `{ { guards }, rest, { after } }`.
 //!
 //! **Text.** The Luau is what roblox-ts makes of the TS builder's output, so it matches a TS5 build byte for byte,
@@ -35,7 +35,6 @@ use rbxts_plugin::ts::{Kind, Node, P, Type};
 use rbxts_plugin::{Cx, LuauExpr, PResult};
 use tsrs_checker::ElementFlags;
 
-pub use generator::{DEDUP_HEURISTIC_LIMIT, GUARD_RECURSION_LIMIT};
 use generator::Generator;
 use names::declared;
 
@@ -148,18 +147,8 @@ fn in_function(node: P<Node>) -> bool {
 }
 
 /// `buildGuardsFromType`: a guard per property of `ty`, keyed for a Luau table: by the property's table key when
-/// `interface` (as `t.interface` checks them), else by its name (a component's attributes).
-pub fn guard_fields(
-    cx: &mut Cx<'_>,
-    config: GuardConfig<'_>,
-    node: P<Node>,
-    ty: P<Type>,
-    interface: bool,
-) -> PResult<Vec<(LuauExpr, LuauExpr)>> {
-    guard_fields_in_context(cx, config, node, ty, interface, None)
-}
-
-/// [`guard_fields`] inside `withDiagnosticContext` (component attributes: "Failed to generate component attributes").
+/// `interface` (as `t.interface` checks them), else by its name (a component's attributes). `context`: the
+/// `withDiagnosticContext` around it (component attributes: "Failed to generate component attributes").
 pub fn guard_fields_in_context(
     cx: &mut Cx<'_>,
     config: GuardConfig<'_>,

@@ -31,9 +31,6 @@ const TYPE_NESTING_LIMIT: usize = 500;
 /// it keeps them in a table.
 const GUARD_LOCALS: usize = 150;
 
-/// `DEDUP_HEURISTIC_LIMIT`
-pub const DEDUP_HEURISTIC_LIMIT: u32 = 5;
-
 /// Types that compile to `t.typeof("<name>")` (`RBX_TYPES_NEW`): userdata `t` has no alias for.
 const RBX_TYPES_NEW: [&str; 2] = ["buffer", "InstanceHandle"];
 

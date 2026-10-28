@@ -20,7 +20,6 @@ use rbxts_plugin::ts::{P, Symbol};
 use rbxts_plugin::{Cx, Tag};
 
 pub use obfuscation::KEY_OBFUSCATION_MARKER;
-pub use shape::{InstanceShape, build_instance_shape};
 
 use crate::plugin::FwInstance;
 

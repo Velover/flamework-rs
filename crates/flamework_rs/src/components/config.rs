@@ -2,8 +2,8 @@
 //! `macros/updateComponentConfig.ts`): `@Component({...})` on a class gets the config its types imply, merged into
 //! the written object, in the TS's order:
 //! - `links`: the components and instances the attributes and the instance tree link to;
-//! - `attributes`: a guard per attribute (F3's [`crate::guards::guard_fields`]), after the written ones, but for
-//!   the attributes written by hand and those the base class already checks with the same type;
+//! - `attributes`: a guard per attribute (F3's [`crate::guards::guard_fields_in_context`]), after the written ones,
+//!   but for the attributes written by hand and those the base class already checks with the same type;
 //! - `instanceShape` (the instance tree as data, [`super::shape`]) or `instanceGuard` (a `t` guard) when the
 //!   instance type is narrower than the base class's and no `instanceGuard` is written.
 //!

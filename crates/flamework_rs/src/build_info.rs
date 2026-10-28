@@ -26,6 +26,7 @@ pub struct GlobUse {
     pub macro_name: String,
     /// Where the macro is called, one-based.
     pub line: u32,
+    /// The column of the call, one-based.
     pub column: u32,
 }
 
@@ -48,7 +49,9 @@ pub struct PathUse {
     pub path: String,
     /// The call the path was given to: `registerProviders`, `ComponentPlugin.fromPath`.
     pub macro_name: String,
+    /// The line of the call, one-based.
     pub line: u32,
+    /// The column of the call, one-based.
     pub column: u32,
     /// Core's `requireModules`, which raises after five seconds rather than waiting.
     pub raises: bool,
@@ -104,6 +107,8 @@ pub fn find_problem(text: Option<&str>) -> Option<String> {
     None
 }
 
+/// A `flamework.build` (`BuildInfo`): the id table, salt, build seed, recorded inputs and glob/path uses, kept as
+/// the JSON object it reads and writes, with the package build infos it reads ids from.
 #[derive(Debug, Clone)]
 pub struct BuildInfo {
     /// Where it is read from and written to.
@@ -232,6 +237,7 @@ impl BuildInfo {
         json::stringify(&JsValue::Object(self.data.clone()), Some("\t")).unwrap()
     }
 
+    /// Writes [`BuildInfo::to_json`] to [`BuildInfo::path`].
     pub fn save(&self) -> std::io::Result<()> {
         std::fs::write(&self.path, self.to_json())
     }
@@ -306,6 +312,7 @@ impl BuildInfo {
         self.children.push(child);
     }
 
+    /// The package build infos registered with [`BuildInfo::add_build_info`], in registration order.
     pub fn children(&self) -> &[BuildInfo] {
         &self.children
     }
@@ -563,6 +570,7 @@ impl BuildInfo {
         );
     }
 
+    /// The recorded `identifierPrefix`; `None` when it is unset or empty.
     pub fn identifier_prefix(&self) -> Option<&str> {
         self.string_field("identifierPrefix")
             .filter(|s| !s.is_empty())
@@ -576,6 +584,7 @@ impl BuildInfo {
             .insert("idGenerationMode", JsValue::String(mode.to_owned()));
     }
 
+    /// The recorded id generation mode (`idGenerationMode`), if there is one.
     pub fn id_generation_mode(&self) -> Option<&str> {
         self.string_field("idGenerationMode")
     }
@@ -715,6 +724,7 @@ pub struct CandidateScan {
 }
 
 impl CandidateScan {
+    /// A scan with no ceiling (up to the file system's root) and an empty cache.
     pub fn new() -> Self {
         Self::default()
     }
@@ -823,7 +833,9 @@ pub fn package_build_info_remedy_with(
 /// A Flamework package built by another version of the transformer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MixedVersion {
+    /// The package's name.
     pub name: String,
+    /// The Flamework version its `flamework.build` records (`flameworkVersion`).
     pub version: String,
     /// The `flamework.build`, relative to the project, with forward slashes.
     pub file: String,

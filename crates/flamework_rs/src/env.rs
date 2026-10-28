@@ -18,10 +18,12 @@ pub struct Env {
 }
 
 impl Env {
+    /// An empty environment.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// The value of `name`, if it is set.
     pub fn get(&self, name: &str) -> Option<&str> {
         self.entries
             .iter()
@@ -39,14 +41,17 @@ impl Env {
         }
     }
 
+    /// The variables as `(name, value)`, in JavaScript's order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &str)> {
         self.entries.iter().map(|(k, v)| (k.as_str(), v.as_str()))
     }
 
+    /// How many variables are set.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
+    /// Whether no variable is set.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }

@@ -71,6 +71,8 @@ pub mod win32 {
         (String::new(), p)
     }
 
+    /// `path.win32.isAbsolute(p)`: a drive or UNC root followed by a separator, or a leading separator (`C:` alone
+    /// is relative).
     pub fn is_absolute(p: &str) -> bool {
         let (root, _) = split_root(p);
         root.ends_with('\\')
@@ -220,6 +222,7 @@ pub mod win32 {
 
 /// Node's `path.posix`.
 pub mod posix {
+    /// `path.posix.isAbsolute(p)`.
     pub fn is_absolute(p: &str) -> bool {
         p.starts_with('/')
     }
@@ -242,6 +245,7 @@ pub mod posix {
         out
     }
 
+    /// `path.posix.resolve(...paths)`, against the process's current directory when no path is absolute.
     pub fn resolve(paths: &[&str]) -> String {
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().into_owned())
@@ -268,6 +272,7 @@ pub mod posix {
         format!("/{}", normalize_segments(&tail, true).join("/"))
     }
 
+    /// `path.posix.relative(from, to)`.
     pub fn relative(from: &str, to: &str) -> String {
         let from = resolve(&[from]);
         let to = resolve(&[to]);
@@ -282,6 +287,7 @@ pub mod posix {
         parts.join("/")
     }
 
+    /// `path.posix.dirname(p)`.
     pub fn dirname(p: &str) -> String {
         let rest = p.trim_end_matches('/');
         match rest.rfind('/') {
@@ -292,6 +298,7 @@ pub mod posix {
         }
     }
 
+    /// `path.posix.join(...paths)`.
     pub fn join(paths: &[&str]) -> String {
         let joined = paths
             .iter()
@@ -305,6 +312,7 @@ pub mod posix {
         normalize(&joined)
     }
 
+    /// `path.posix.normalize(p)`.
     pub fn normalize(p: &str) -> String {
         let absolute = p.starts_with('/');
         let trailing = p.ends_with('/');
@@ -322,6 +330,7 @@ pub mod posix {
         }
     }
 
+    /// `path.posix.parse(p).name`: the base name without its last extension.
     pub fn parse_name(p: &str) -> String {
         let base = p.trim_end_matches('/');
         let base = &base[base.rfind('/').map_or(0, |i| i + 1)..];

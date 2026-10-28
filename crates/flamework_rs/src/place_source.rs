@@ -2,8 +2,7 @@
 //! empty-path warnings of `finish`.
 //!
 //! Every disk read goes through [`Disk`]: in a build that is `FinishCx`, which records each read so that watch
-//! runs `finish` again when an answer changes (the warnings then equal a clean build's); tools and tests use
-//! [`FsDisk`].
+//! runs `finish` again when an answer changes (the warnings then equal a clean build's); the unit tests use a fake.
 
 use rbxts_plugin::{EntryKind, FinishCx};
 
@@ -16,30 +15,6 @@ pub trait Disk {
     fn entries(&mut self, directory: &str) -> Option<Vec<(String, bool)>>;
     /// Whether something is at `path` (links followed).
     fn exists(&mut self, path: &str) -> bool;
-}
-
-/// The disk, unrecorded.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct FsDisk;
-
-impl Disk for FsDisk {
-    fn entries(&mut self, directory: &str) -> Option<Vec<(String, bool)>> {
-        let read = std::fs::read_dir(directory).ok()?;
-        let mut entries: Vec<(String, bool)> = read
-            .filter_map(Result::ok)
-            .map(|entry| {
-                // Follows links, as `fs.statSync` does for a symbolic link entry.
-                let directory = std::fs::metadata(entry.path()).is_ok_and(|m| m.is_dir());
-                (entry.file_name().to_string_lossy().into_owned(), directory)
-            })
-            .collect();
-        entries.sort();
-        Some(entries)
-    }
-
-    fn exists(&mut self, path: &str) -> bool {
-        std::path::Path::new(path).exists()
-    }
 }
 
 /// The compiler's recorded reads (`FinishCx::read_dir` / `exists`).

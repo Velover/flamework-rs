@@ -281,6 +281,7 @@ pub struct LoadedProjectConfig {
     pub config: JsValue,
     /// The whole file, or an empty object when there is none.
     pub project: JsValue,
+    /// The `flamework.config.json` read, or `None` when the project has none.
     pub config_path: Option<String>,
     /// `.env` and `.env.local` next to the file (or next to the tsconfig when there is no file), with the process
     /// environment on top. `Flamework.env` reads it.
@@ -420,23 +421,35 @@ pub fn get_runtime_config(project: &JsValue) -> Option<JsValue> {
 /// One `transformer.plugins` entry.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PluginEntry {
+    /// The plugin's module path, as written (a string entry, or an object entry's `path`).
     pub path: String,
+    /// An object entry's `options`.
     pub options: Option<JsValue>,
 }
 
 /// The `transformer` section, typed. The file has been validated, so every field has its schema type.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TransformerConfig {
+    /// `plugins`: the TS transformer's JavaScript plugins, which this build ignores with a warning (macro types are
+    /// registered on [`crate::Flamework`] instead).
     pub plugins: Vec<PluginEntry>,
+    /// `noSemanticDiagnostics`: `true` transforms a file even when the checker reports errors in it.
     pub no_semantic_diagnostics: Option<bool>,
+    /// `salt`: a fixed salt for hashed ids, instead of the build info's.
     pub salt: Option<String>,
+    /// `hashPrefix`: the prefix ids get (a package defaults it to its name).
     pub hash_prefix: Option<String>,
+    /// `obfuscation`: obfuscated ids, keys and strings.
     pub obfuscation: Option<bool>,
+    /// `idGenerationMode`, as written ([`TransformerConfig::effective_id_mode`] applies the default).
     pub id_generation_mode: Option<IdMode>,
+    /// `optimizations.guardGenerationDedupLimit`: how often a type is met before its guard is declared once and
+    /// reused.
     pub guard_generation_dedup_limit: Option<u32>,
 }
 
 impl TransformerConfig {
+    /// The typed section from the validated `transformer` object (unknown or mistyped values read as unset).
     pub fn from_value(value: &JsValue) -> Self {
         let string = |key: &str| value.get(key).and_then(JsValue::as_str).map(str::to_owned);
         let boolean = |key: &str| value.get(key).and_then(JsValue::as_bool);
@@ -603,7 +616,12 @@ pub enum SchemaReferenceChange {
     /// A file holding just the line was created at this path.
     Created(String),
     /// The file could not be written: a warning, never a failed build.
-    WriteFailed { path: String, error: String },
+    WriteFailed {
+        /// The file.
+        path: String,
+        /// The error, as text.
+        error: String,
+    },
 }
 
 impl SchemaReferenceChange {

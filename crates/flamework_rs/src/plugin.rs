@@ -45,6 +45,7 @@ pub struct Flamework {
 }
 
 impl Flamework {
+    /// The plugin with no macro types.
     pub fn new() -> Flamework {
         Flamework::default()
     }
@@ -76,19 +77,20 @@ pub enum PathEvent {
 }
 
 /// What one file contributes to `finish` (DESIGN §10.1). Owned data only: no handles, no `FileIndex`. Persisted for
-/// incremental builds by [`crate::part_codec`] (bump its format version when a field changes).
+/// incremental builds by `crate::part_codec` (bump its format version when a field changes).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct FwFilePart {
     /// The file relative to the package root (`getFileId`).
-    pub file_id: String,
+    pub(crate) file_id: String,
     /// Ids the file asked for that the build info did not have, in first-request order within the file.
-    pub new_ids: Vec<NewId>,
+    pub(crate) new_ids: Vec<NewId>,
     /// The late keys the file used (internal ids), for the late-string contract.
-    pub late_keys: Vec<String>,
-    pub events: Vec<PathEvent>,
+    pub(crate) late_keys: Vec<String>,
+    /// The glob and path uses, in the order the transform met them.
+    pub(crate) events: Vec<PathEvent>,
     /// The variables `Flamework.env` inlined, in the TS transformer's order: `(name, hash of the value)`
     /// (`inputs.env` in `flamework.build`).
-    pub env_inputs: Vec<(String, String)>,
+    pub(crate) env_inputs: Vec<(String, String)>,
 }
 
 /// The per-file state of an instance, reset in `begin_file`. Per file only: a cache across files would make the

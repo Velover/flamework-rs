@@ -414,7 +414,8 @@ impl<'a> Validator<'a> {
 
 /// The keywords [`validate`] implements. Any other keyword in a schema would be ignored silently, so a test fails
 /// when the embedded schemas use one.
-pub const IMPLEMENTED_KEYWORDS: &[&str] = &[
+#[cfg(test)]
+const IMPLEMENTED_KEYWORDS: &[&str] = &[
     "type",
     "enum",
     "oneOf",
@@ -430,7 +431,8 @@ pub const IMPLEMENTED_KEYWORDS: &[&str] = &[
 ];
 
 /// Keywords that only annotate, which Ajv (without `useDefaults`) does not act on either.
-pub const ANNOTATION_KEYWORDS: &[&str] = &["$schema", "$id", "title", "description", "default"];
+#[cfg(test)]
+const ANNOTATION_KEYWORDS: &[&str] = &["$schema", "$id", "title", "description", "default"];
 
 #[cfg(test)]
 mod tests {

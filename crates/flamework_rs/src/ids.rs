@@ -14,15 +14,21 @@ use crate::build_info::BuildInfo;
 use crate::hashids::Hashids;
 use crate::{js, node_path};
 
+/// `transformer.idGenerationMode`: how a declaration's id is made.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IdMode {
+    /// The internal id, formatted by [`format_internal_id`]: `path@Name`, after the prefix when one is set.
     Full,
+    /// `file@Name{hash}`, `hash` being a Hashids hash of a sequential counter, after the prefix when one is set.
     Short,
+    /// `Name{hash}`, likewise.
     Tiny,
+    /// The hash alone, after `hashPrefix` (in a package, its name by default) unless a game has none.
     Obfuscated,
 }
 
 impl IdMode {
+    /// The mode a config names (`full`, `short`, `tiny`, `obfuscated`).
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "full" => Some(IdMode::Full),
@@ -33,6 +39,7 @@ impl IdMode {
         }
     }
 
+    /// The name the config and `flamework.build` use.
     pub fn as_str(self) -> &'static str {
         match self {
             IdMode::Full => "full",
@@ -159,10 +166,13 @@ pub fn declaration_name<'a>(
 /// The id settings of a compilation.
 #[derive(Debug, Clone)]
 pub struct IdConfig {
+    /// The id generation mode.
     pub mode: IdMode,
     /// `transformer.hashPrefix` (a package defaults it to its name before this is built).
     pub hash_prefix: Option<String>,
+    /// The package's name, the prefix of a package's hashed ids when it has no `hashPrefix`.
     pub package_name: String,
+    /// Whether the project is a game (not a package): a game's hashed ids have no prefix unless one is set.
     pub is_game: bool,
     /// The salt: `transformer.salt`, else the build info's.
     pub salt: String,
@@ -200,8 +210,11 @@ pub struct Declaration {
 /// A new id the file part records, for [`Ids::assign`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewId {
+    /// The declaration's internal id.
     pub internal_id: String,
+    /// [`Declaration::name`].
     pub name: String,
+    /// [`Declaration::file_name`].
     pub file_name: String,
 }
 
@@ -217,10 +230,12 @@ pub enum IdAnswer {
 /// The id table during a compilation: read-only while files are transformed (any checker), filled at `finish`.
 #[derive(Debug, Clone)]
 pub struct Ids {
+    /// The compilation's id settings.
     pub config: IdConfig,
 }
 
 impl Ids {
+    /// The id table of a compilation with `config`.
     pub fn new(config: IdConfig) -> Self {
         Ids { config }
     }

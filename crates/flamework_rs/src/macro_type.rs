@@ -56,6 +56,7 @@ impl MacroTypes {
         self.entries.iter().map(|(name, _)| name.as_str()).collect()
     }
 
+    /// Whether no macro type is registered.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -70,24 +71,38 @@ impl std::fmt::Debug for MacroTypes {
 /// A literal type's value ([`MacroCx::literal`]).
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
+    /// A string literal type (`"a"`).
     Str(String),
+    /// A number literal type (`1`).
     Num(f64),
+    /// `true` or `false`.
     Bool(bool),
 }
 
 /// The primitive names of the TS facade's `isPrimitive`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Primitive {
+    /// `any`.
     Any,
+    /// `unknown`.
     Unknown,
+    /// `string`.
     String,
+    /// `number`.
     Number,
+    /// `bigint`.
     BigInt,
+    /// `boolean`.
     Boolean,
+    /// `true`.
     True,
+    /// `false`.
     False,
+    /// `undefined`.
     Undefined,
+    /// `void`.
     Void,
+    /// `never`.
     Never,
 }
 
@@ -113,40 +128,55 @@ impl Primitive {
 /// A union's or intersection's members ([`MacroCx::constituents`]), in TS7's fixed order.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Constituents {
+    /// A union's members (`A | B`).
     Union(Vec<P<Type>>),
+    /// An intersection's members (`A & B`).
     Intersection(Vec<P<Type>>),
 }
 
 /// A property of an object type ([`MacroCx::fields`]), in declaration order.
 #[derive(Clone, Debug)]
 pub struct Field {
+    /// The property's name.
     pub name: String,
+    /// The property's type.
     pub ty: P<Type>,
+    /// Whether it is optional (`a?: T`).
     pub optional: bool,
+    /// Whether a declaration of it is `readonly`.
     pub readonly: bool,
 }
 
 /// An index signature ([`MacroCx::index_signatures`]).
 #[derive(Clone, Debug)]
 pub struct IndexSignature {
+    /// The key type (`string`, `number`, a template literal, ...).
     pub key: P<Type>,
+    /// The value type.
     pub value: P<Type>,
+    /// Whether the signature is `readonly`.
     pub readonly: bool,
 }
 
 /// A call or construct signature ([`MacroCx::call_signatures`]).
 #[derive(Clone, Debug)]
 pub struct SignatureInfo {
+    /// The parameters' types, in order.
     pub inputs: Vec<P<Type>>,
+    /// The return type.
     pub output: P<Type>,
 }
 
 /// A tuple element ([`MacroCx::tuple_elements`]).
 #[derive(Clone, Debug)]
 pub struct TupleElement {
+    /// The element's label (`[name: T]`), if it has one.
     pub name: Option<String>,
+    /// The element's type (for a rest element, the array element type).
     pub ty: P<Type>,
+    /// Whether it is a rest element (`...T[]`).
     pub spread: bool,
+    /// Whether it is optional (`T?`).
     pub optional: bool,
 }
 

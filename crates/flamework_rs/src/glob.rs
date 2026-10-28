@@ -75,10 +75,12 @@ pub fn glob_sync(pattern: &str, root: &Path) -> Vec<String> {
 /// matcher.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Matcher {
+    /// The pattern, relative to the root it is expanded in.
     pub pattern: String,
 }
 
 impl Matcher {
+    /// The matcher of `pattern`.
     pub fn new(pattern: impl Into<String>) -> Matcher {
         Matcher { pattern: pattern.into() }
     }

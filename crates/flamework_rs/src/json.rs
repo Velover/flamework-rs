@@ -1,5 +1,5 @@
 //! JSON as JavaScript holds it: objects keep JavaScript's property order (array-index keys first, ascending, then
-//! the rest in insertion order), [`parse`] is `JSON.parse` with V8's error messages, and [`stringify`] is
+//! the rest in insertion order), [`parse`] is `JSON.parse` with V8's error messages, and [`stringify()`] is
 //! `JSON.stringify`, so that a file the TS transformer wrote reads and writes back to the same bytes.
 //!
 //! Parsing and writing are iterative: nesting costs heap, not stack, as in V8 (whose `JSON.parse` has no depth
@@ -12,20 +12,28 @@
 
 use crate::js;
 
+/// A JavaScript value as JSON holds it, plus `undefined`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum JsValue {
     /// A property set to `undefined`: kept in its place, but `JSON.stringify` leaves it out (and writes `null` for it
     /// in an array). The TS build info has one: `identifierPrefix` set to `undefined` in a game.
     Undefined,
+    /// `null`.
     Null,
+    /// A boolean.
     Bool(bool),
+    /// A number.
     Number(f64),
+    /// A string.
     String(String),
+    /// An array.
     Array(Vec<JsValue>),
+    /// An object.
     Object(JsObject),
 }
 
 impl JsValue {
+    /// The string, if this is one.
     pub fn as_str(&self) -> Option<&str> {
         match self {
             JsValue::String(s) => Some(s),
@@ -33,6 +41,7 @@ impl JsValue {
         }
     }
 
+    /// The object, if this is one.
     pub fn as_object(&self) -> Option<&JsObject> {
         match self {
             JsValue::Object(o) => Some(o),
@@ -40,6 +49,7 @@ impl JsValue {
         }
     }
 
+    /// The object, mutably, if this is one.
     pub fn as_object_mut(&mut self) -> Option<&mut JsObject> {
         match self {
             JsValue::Object(o) => Some(o),
@@ -47,6 +57,7 @@ impl JsValue {
         }
     }
 
+    /// The array, if this is one.
     pub fn as_array(&self) -> Option<&Vec<JsValue>> {
         match self {
             JsValue::Array(a) => Some(a),
@@ -54,6 +65,7 @@ impl JsValue {
         }
     }
 
+    /// The boolean, if this is one.
     pub fn as_bool(&self) -> Option<bool> {
         match self {
             JsValue::Bool(b) => Some(*b),
@@ -61,6 +73,7 @@ impl JsValue {
         }
     }
 
+    /// The number, if this is one.
     pub fn as_f64(&self) -> Option<f64> {
         match self {
             JsValue::Number(n) => Some(*n),
@@ -91,14 +104,17 @@ pub struct JsObject {
 }
 
 impl JsObject {
+    /// An empty object.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// How many properties it has.
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
+    /// Whether it has no properties.
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
@@ -107,10 +123,12 @@ impl JsObject {
         self.entries.iter().position(|(k, _)| k == key)
     }
 
+    /// The property `key`, if there is one.
     pub fn get(&self, key: &str) -> Option<&JsValue> {
         self.entries.iter().find(|(k, _)| k == key).map(|(_, v)| v)
     }
 
+    /// The property `key`, mutably, if there is one.
     pub fn get_mut(&mut self, key: &str) -> Option<&mut JsValue> {
         self.entries
             .iter_mut()
@@ -118,6 +136,7 @@ impl JsObject {
             .map(|(_, v)| v)
     }
 
+    /// Whether there is a property `key` (`key in object`, own properties only).
     pub fn contains_key(&self, key: &str) -> bool {
         self.position(key).is_some()
     }
@@ -157,14 +176,17 @@ impl JsObject {
         Some(self.entries.remove(i).1)
     }
 
+    /// The properties as `(key, value)`, in JavaScript's order.
     pub fn iter(&self) -> impl Iterator<Item = (&String, &JsValue)> {
         self.entries.iter().map(|(k, v)| (k, v))
     }
 
+    /// The keys, in JavaScript's order (`Object.keys`).
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.entries.iter().map(|(k, _)| k)
     }
 
+    /// Removes every property.
     pub fn clear(&mut self) {
         self.entries.clear();
     }

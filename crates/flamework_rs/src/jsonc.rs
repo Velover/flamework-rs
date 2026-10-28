@@ -17,50 +17,70 @@ const DOUBLE_QUOTES: &str = "String literal with double quotes expected.";
 /// parse diagnostic, if any. Positions are byte offsets into the text.
 #[derive(Debug)]
 pub struct JsonFile {
+    /// The root expression; `None` for a file with none (empty, or only comments) and after a parse error.
     pub root: Option<Node>,
+    /// The first parse diagnostic's message, as TypeScript words it.
     pub parse_error: Option<String>,
 }
 
+/// An expression of the file, with its span.
 #[derive(Debug, Clone)]
 pub struct Node {
     /// Where the node's first token starts (TypeScript's `getStart()`: after whitespace and comments).
     pub start: usize,
     /// Where its last token ends (TypeScript's `end`).
     pub end: usize,
+    /// What the expression is.
     pub kind: Kind,
 }
 
+/// The kinds of expression a JSON file can hold (and [`Kind::Other`] for the rest).
 #[derive(Debug, Clone)]
 pub enum Kind {
+    /// An object literal's members, in source order.
     Object(Vec<Member>),
     /// `None` for an omitted element (`[a,,b]`).
     Array(Vec<Option<Node>>),
+    /// A string literal.
     String {
+        /// Its value, escapes resolved.
         value: String,
+        /// Whether it is written in double quotes (JSON refuses single quotes).
         double_quoted: bool,
     },
+    /// A numeric literal.
     Number(f64),
     /// `-` and a numeric literal.
     Negative(f64),
+    /// `true`.
     True,
+    /// `false`.
     False,
+    /// `null`.
     Null,
     /// Any other expression: valid TypeScript, refused when converted.
     Other,
 }
 
+/// An object literal member.
 #[derive(Debug, Clone)]
 pub struct Member {
+    /// Where the member starts.
     pub start: usize,
+    /// The property name; `None` for a spread, a computed name or a generator method.
     pub name: Option<Name>,
     /// `None` for a member that is not `name: value` (a shorthand `{ a }`, a method, a spread...).
     pub value: Option<Node>,
 }
 
+/// A property name.
 #[derive(Debug, Clone)]
 pub enum Name {
+    /// A string literal name.
     String {
+        /// Its value, escapes resolved.
         value: String,
+        /// Whether it is written in double quotes.
         double_quoted: bool,
     },
     /// An identifier, a keyword or a numeric literal as a property name.
