@@ -133,7 +133,7 @@ pub(crate) fn explain_removed_marker(cx: &mut Cx<'_>, diagnostic: P<Diagnostic>)
 }
 
 /// The identifier whose token starts at `start` (`getTokenAtPosition`), if one does.
-fn identifier_at(root: P<Node>, start: u32) -> Option<P<Node>> {
+pub(crate) fn identifier_at(root: P<Node>, start: u32) -> Option<P<Node>> {
     let mut current = root;
     loop {
         let mut next = None;

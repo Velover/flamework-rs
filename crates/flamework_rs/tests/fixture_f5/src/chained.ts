@@ -1,7 +1,7 @@
 import { Events } from "./client";
 
-// An optional chain: the compiler's nil check holds the packing, where TS5 wraps the call in a function that checks
-// the chain's start (one of the two files of the fixture that differ from TS5's bytes; README.md, Known limitations).
+// An optional chain: in a function that checks the chain's start, packs, and then reads the chain again for the send,
+// as TS5 does.
 export function chained(maybe: typeof Events | undefined, value: number) {
 	maybe?.alpha.fire(value * 3);
 	maybe?.charlie.fire();

@@ -3,7 +3,7 @@
 local read = remotes.fire
 local element = remotes.fire
 local spaced = remotes["two words"]
-local called = remotes:call(1)
+local called = remotes.call(remotes, 1)
 local _chained = maybe
 if _chained ~= nil then
 	_chained = _chained.fire

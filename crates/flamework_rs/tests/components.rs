@@ -5,14 +5,7 @@
 //! fixture's `components.ts`, `shared/recursiveLink.luau` its `RecursiveLink`. Every file and `flamework.build` equal
 //! TS5's but for:
 //! - the order of union members, which follows TS7 (DESIGN §10.4): `isA = { "Decal", "Texture" }` in an instance
-//!   shape, the members of `t.union` / `t.literal` in guards (`components.luau`, `config.luau`);
-//! - `attributes.luau`: the guard library's `t` import before `SYMBOL_ATTRIBUTE_SETTER`'s. The TS transformer
-//!   transforms a reflected class's members before its decorators, so the setter's import came first; rbxts-rs
-//!   orders plugin imports by the source position of the hook that asked, and the decorator comes first in the
-//!   source;
-//! - `obfuscation.luau`: `remotes:call(1)` for TS5's `remotes.call(remotes, 1)`. The TS rewrote the access to an
-//!   element access (`remotes["call" as "call"]`), which roblox-ts calls with an explicit self; a `property_key`
-//!   answer keeps the method call. The same call.
+//!   shape, the members of `t.union` / `t.literal` in guards (`components.luau`, `config.luau`).
 //!
 //! The project is built in a temporary copy with a `node_modules` made as `e2e.rs` makes it. Without a monorepo the
 //! tests are skipped, saying so.
@@ -181,7 +174,9 @@ fn component_errors_are_reported() {
     let mut lines = Vec::new();
     for d in all {
         let category = if d.category() == Category::Error { "error" } else { "warning" };
-        lines.push(format!("{category} {}: {}", position(d), flatten_diagnostic_message(d, "\n")));
+        // The code slot as the reporter prints it: `TS1117` for a plugin diagnostic with a TypeScript code.
+        let code = rbxts_transform::plugins::backend::diagnostic_code(d).map(|c| format!(" TS{c}")).unwrap_or_default();
+        lines.push(format!("{category}{code} {}: {}", position(d), flatten_diagnostic_message(d, "\n")));
         for &related in d.related_information() {
             lines.push(format!("    {}: {}", position(related), flatten_diagnostic_message(related, "\n")));
         }

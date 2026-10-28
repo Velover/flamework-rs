@@ -5,13 +5,12 @@
 //!   guards and `instanceShape` / `instanceGuard`), called from the user-macro hook ([`crate::macros`]);
 //! - [`shape`]: instance shapes (`buildInstanceShape`);
 //! - [`setter`]: writes to a component's `attributes` (the `assignment` hook, [`TAG_ATTRIBUTES`]);
-//! - [`obfuscation`]: obfuscated keys (the `property_key` hook, [`TAG_KEY_OBFUSCATION`]).
+//! - [`obfuscation`]: obfuscated keys (the `property_key_answer` hook, [`TAG_KEY_OBFUSCATION`]).
 //!
 //! Component ids in `links` are requested as any other id ([`crate::uid`]), so `flamework.build` records them in the
 //! TS's order: after the ids of the written config argument.
 
 pub(crate) mod config;
-mod effects;
 mod literal;
 pub(crate) mod obfuscation;
 pub(crate) mod setter;

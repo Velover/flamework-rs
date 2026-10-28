@@ -118,6 +118,8 @@ struct CheckState {
 pub(crate) struct Generator<'g, 'x> {
     pub(crate) cx: &'g mut Cx<'x>,
     library: String,
+    /// The `Reflect` import's specifier in this file ([`crate::class_hook::import_named`]).
+    reflect: String,
     library_warning: Option<&'static str>,
     t: Option<Expr>,
     diagnostic_node: P<Node>,
@@ -137,11 +139,13 @@ pub(crate) struct Generator<'g, 'x> {
 }
 
 impl<'g, 'x> Generator<'g, 'x> {
-    pub(crate) fn new(cx: &'g mut Cx<'x>, package_name: &str, diagnostic_node: P<Node>) -> Self {
-        let (library, library_warning) = super::library::guard_library(cx, package_name);
+    pub(crate) fn new(cx: &'g mut Cx<'x>, config: super::GuardConfig<'_>, diagnostic_node: P<Node>) -> Self {
+        let (library, library_warning) = super::library::guard_library(cx, config.package_name);
+        let reflect = crate::setup::reflect_specifier(config.package_name, config.root_dir, &cx.file().path);
         Generator {
             cx,
             library,
+            reflect,
             library_warning,
             t: None,
             diagnostic_node,
@@ -207,7 +211,8 @@ impl<'g, 'x> Generator<'g, 'x> {
         if let Some(t) = &self.t {
             return Ok(t.clone());
         }
-        let t = self.cx.import_named(&self.library.clone(), "t")?;
+        let (reflect, library) = (self.reflect.clone(), self.library.clone());
+        let t = crate::class_hook::import_named(self.cx, &reflect, &library, "t", self.diagnostic_node)?;
         self.t = Some(t.clone());
         Ok(t)
     }
@@ -980,9 +985,6 @@ impl<'g, 'x> Generator<'g, 'x> {
             self.tracking.push((declaration, ty));
         }
 
-        if let Some(name) = crate::guards::types::hidden_declared_property(self.cx, ty) {
-            return Err(self.fail(crate::guards::types::hidden_property_message(&name) + "."));
-        }
         let mut guards = Vec::new();
         for property in self.cx.ts5_properties_of_type(ty) {
             let property_declaration = property.value_declaration();

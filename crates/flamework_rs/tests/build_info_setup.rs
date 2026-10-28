@@ -251,22 +251,6 @@ fn changed_inputs_name_the_mode_before_the_config() {
     assert!(changed_inputs(&other, "short", "c2").is_empty());
 }
 
-/// The file the remedies name: rbxtsc-fw's incremental state beside roblox-ts's build info, as rbxts-rs names it.
-#[test]
-fn the_remedies_name_the_incremental_state() {
-    use flamework_rs::build_info::incremental_state_name;
-    assert_eq!(
-        incremental_state_name("E:/p", Some("E:/p/out/tsconfig.rbxtsc.tsbuildinfo")).as_deref(),
-        Some("out/tsconfig.rbxts-rs.buildinfo")
-    );
-    assert_eq!(
-        incremental_state_name("E:/p", Some("E:/p/tsconfig.rbxtsc.tsbuildinfo")).as_deref(),
-        Some("tsconfig.rbxts-rs.buildinfo")
-    );
-    assert_eq!(incremental_state_name("E:/p", Some("E:/p/b/x.tsbuildinfo")).as_deref(), Some("b/x.rbxts-rs.buildinfo"));
-    assert_eq!(incremental_state_name("E:/p", None), None);
-}
-
 /// The project's own `flamework.build` read for reuse: refused as the TS refuses it, with the remedy of an incremental
 /// build or a watcher, and the dirty-environment stop.
 #[test]

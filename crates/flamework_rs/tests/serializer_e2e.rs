@@ -129,15 +129,12 @@ fn mapped_links_match_ts5() {
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// RBXTS-GAP: an object rest lists its properties in the order of the type it was taken from, which rbxts-rs's
-/// TypeScript 5 property order does not rebuild for a rest yet: a rest of two runs or more (properties of different
-/// origins, or several that no one mapped type made) is refused, naming the type, mapped or not, and so is a type of
-/// several runs built from one (a spread of it, an interface extending it, a homomorphic mapped type over that,
-/// either nested in a container). A rest of one run (one property, or properties a single mapped type made) has an
-/// order that does not depend on the rest's list, and builds, as does a spread of it (`fixture_f4/src/spreads.ts`
-/// has TS5's bytes for both kinds of rest).
+/// Object rests of every kind build: rbxts-rs lists a rest's properties in TypeScript 5's order (the order of the type
+/// it was taken from), and so every type built from one (a spread of it, an interface extending it, a homomorphic
+/// mapped type over that, nested in a container). Their bytes equal TS5's (`fixture_f4/src/spreads.ts`; the fwapi
+/// round compared the pin-bump rounds' rest, derived-type and 171-shape projects with TS5 byte for byte).
 #[test]
-fn a_multi_run_object_rest_is_refused() {
+fn object_rests_build() {
     let Some(project) = Project::new(FIXTURE, "rest") else { return };
     std::fs::remove_dir_all(project.root.join("src")).unwrap();
     project.write(
@@ -235,37 +232,7 @@ export const vr25 = Flamework.createSerializer<ReturnType<typeof vr25Value>>();
 "#,
     );
     let report = project.build_with(Flamework::new());
-    let errors = errors(&report);
-    assert_eq!(errors.len(), 9, "{errors:#?}");
-    for text in ["{ zeta: u8; extra: u8; }", "{ a: u8; b: u8; }", "{ x: u8; y: u8; }"] {
-        let refused = format!("flamework-rs does not support '{text}' yet: it is an object rest");
-        assert!(errors.iter().any(|e| e.contains(&refused)), "{text}: {errors:#?}");
-    }
-    let built = errors.iter().filter(|e| e.contains("yet: it is built from an object rest")).count();
-    assert_eq!(built, 6, "H1 to H5 and VR25: {errors:#?}");
-}
-
-/// TSRS-GAP: a declared property whose name starts with U+007F (`"\u007fab"`) is one rbxts-rs's checker takes for a
-/// reserved name and does not list, where TS5 keeps it: a serializer and a guard of such a type are refused, naming
-/// the property, rather than built without it.
-#[test]
-fn a_property_the_checker_hides_is_refused() {
-    let Some(project) = Project::new(FIXTURE, "hidden-name") else { return };
-    std::fs::remove_dir_all(project.root.join("src")).unwrap();
-    project.write(
-        "src/hidden.ts",
-        "import { Flamework, Serialization } from \"@flamework-experimental/core\";\n\
-         type u8 = Serialization.u8;\n\
-         export interface D1 {\n\t\"\\u007fab\": u8;\n\tb: u8;\n}\n\
-         export interface D2 extends D1 {\n\tc: u8;\n}\n\
-         export const s1 = Flamework.createSerializer<D1>();\n\
-         export const s2 = Flamework.createSerializer<{ inner: D2 }>();\n\
-         export const g1 = Flamework.createGuard<D1>();\n",
-    );
-    let report = project.build_with(Flamework::new());
-    let errors = errors(&report);
-    let refused = errors.iter().filter(|e| e.contains("does not support the property '\\u007fab' yet")).count();
-    assert_eq!((refused, errors.len()), (3, 3), "{errors:#?}");
+    assert_clean(&report);
 }
 
 /// `checkGlobalsIn` on a union member's guard (F3's): a module-level declaration hiding a global the guard names

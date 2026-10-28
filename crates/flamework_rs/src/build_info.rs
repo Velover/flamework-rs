@@ -913,9 +913,9 @@ pub fn load_package_build_infos_with(
 /// red. Only a build that reuses the previous `flamework.build` can meet one (rbxts-rs starts a clean build itself
 /// when the plugin version changes, so in practice a file put there by hand or by another toolchain).
 ///
-/// `out_directory` is the output directory relative to the project, with forward slashes; `state_file` is
-/// [`incremental_state_name`] of an incremental project (TS: `getTsBuildInfoPath(options) !== undefined`), which picks
-/// the remedy.
+/// `out_directory` is the output directory relative to the project, with forward slashes; `state_file` is the
+/// compiler's incremental state file (`SetupCx::incremental_state_path`, relative to the project, with forward
+/// slashes) of an incremental project (TS: `getTsBuildInfoPath(options) !== undefined`), which picks the remedy.
 pub fn check_project_version(
     build_info: &BuildInfo,
     out_directory: &str,
@@ -938,25 +938,9 @@ pub fn check_project_version(
     ])
 }
 
-/// The file whose deletion makes the next build of an incremental project a clean one, relative to the project and
-/// with forward slashes, for the messages that ask for it to be deleted (TS's `buildInfoFileName`); `None` when the
-/// project is not incremental. `build_info` is roblox-ts's build info of the project
-/// (`PathTranslator::build_info_output_path`, `<base>.rbxtsc.tsbuildinfo`, which the TS transformer names), absolute.
-///
-/// Under rbxtsc-fw that is the compiler's incremental state, `<base>.rbxts-rs.buildinfo`: rbxts-rs neither writes nor
-/// reads roblox-ts's file. The name mirrors rbxts-rs's own naming (`rbxts_transform::build::state::state_path`: strip
-/// `.rbxtsc.tsbuildinfo`, else `.tsbuildinfo`, then append `.rbxts-rs.buildinfo`) until the plugin API has
-/// `SetupCx::incremental_state_path` (proposed). It depends on the project being incremental, not on whether this
-/// build writes its state (`--noWrite`, an `outDir` override), so the remedy is the same for every build of it.
-pub fn incremental_state_name(project_directory: &str, build_info: Option<&str>) -> Option<String> {
-    build_info.map(|file| {
-        let base = file.strip_suffix(".rbxtsc.tsbuildinfo").or_else(|| file.strip_suffix(".tsbuildinfo")).unwrap_or(file);
-        node_path::relative(project_directory, &format!("{base}.rbxts-rs.buildinfo")).replace('\\', "/")
-    })
-}
-
 /// `ownBuildInfoRemedy`: what to do when the project's own `flamework.build`, read to keep the ids of the files a
-/// build does not transform, cannot be used. `state_file`: [`incremental_state_name`].
+/// build does not transform, cannot be used. `state_file`: the compiler's incremental state file
+/// (`SetupCx::incremental_state_path`, relative to the project, with forward slashes).
 pub fn own_build_info_remedy(state_file: Option<&str>) -> Vec<String> {
     vec![match state_file {
         Some(name) => format!(
@@ -968,7 +952,8 @@ pub fn own_build_info_remedy(state_file: Option<&str>) -> Vec<String> {
 
 /// The stop of an incremental build that has no `flamework.build` for the files it does not transform
 /// (`setupBuildInfo`, said as the version check says it): the headline (red) and the remedy. `state_file`:
-/// [`incremental_state_name`] (`"the tsbuildinfo"` without one, as the TS names it).
+/// the compiler's incremental state file (`SetupCx::incremental_state_path`, relative to the project, with forward
+/// slashes; `"the tsbuildinfo"` without one, as the TS names it).
 pub fn dirty_environment(state_file: Option<&str>) -> Vec<String> {
     vec![
         "Flamework cannot be built in a dirty environment.".to_owned(),

@@ -46,6 +46,8 @@ use crate::setup::FwShared;
 pub struct GuardConfig<'a> {
     /// `package.json`'s name: inside the Flamework packages the guard library is `@rbxts/t` itself.
     pub package_name: &'a str,
+    /// The package root (`rootDirectory`), for the `Reflect` import's specifier inside core.
+    pub root_dir: &'a str,
     /// `transformer.optimizations.guardGenerationDedupLimit`.
     pub dedup_limit: Option<u32>,
 }
@@ -53,7 +55,11 @@ pub struct GuardConfig<'a> {
 impl FwShared {
     /// The guard generator's view of the project.
     pub fn guard_config(&self) -> GuardConfig<'_> {
-        GuardConfig { package_name: &self.package_name, dedup_limit: self.config.guard_generation_dedup_limit }
+        GuardConfig {
+            package_name: &self.package_name,
+            root_dir: &self.root_dir,
+            dedup_limit: self.config.guard_generation_dedup_limit,
+        }
     }
 }
 
@@ -72,7 +78,7 @@ pub fn guard_for_in_context(
     ty: P<Type>,
     context: Option<(P<Node>, String)>,
 ) -> PResult<LuauExpr> {
-    let mut generator = Generator::new(cx, config.package_name, node);
+    let mut generator = Generator::new(cx, config, node);
     generator.set_context(context);
     let mut guard = generator.build_guard(ty)?;
     generator.names.assign(generator.cx, &mut [], Some(&mut guard));
@@ -88,7 +94,7 @@ pub(crate) fn guard_for_unnamed(
     node: P<Node>,
     ty: P<Type>,
 ) -> PResult<(LuauExpr, names::Names)> {
-    let mut generator = Generator::new(cx, config.package_name, node);
+    let mut generator = Generator::new(cx, config, node);
     let guard = generator.build_guard(ty)?;
     Ok((guard, generator.names))
 }
@@ -102,7 +108,7 @@ const COMPACT_LOCALS: usize = 150;
 /// dedup limit, the shared guards go ahead of the TS statement around the call, where the TS's `prereqList` puts
 /// them (`cx.insert_before_statement`), or, when the scope has no room for them, into a function with the guard.
 pub fn guard_for_with_dedup(cx: &mut Cx<'_>, config: GuardConfig<'_>, node: P<Node>, ty: P<Type>) -> PResult<LuauExpr> {
-    let mut generator = Generator::new(cx, config.package_name, node);
+    let mut generator = Generator::new(cx, config, node);
     if let Some(limit) = config.dedup_limit {
         generator.calculate_dedup(ty, limit.max(1));
     }
@@ -162,7 +168,7 @@ pub fn guard_fields_in_context(
     interface: bool,
     context: Option<(P<Node>, String)>,
 ) -> PResult<Vec<(LuauExpr, LuauExpr)>> {
-    let mut generator = Generator::new(cx, config.package_name, node);
+    let mut generator = Generator::new(cx, config, node);
     generator.set_context(context);
     let fields = generator.build_guards_from_type(ty, interface)?;
     let mut map = create::map(fields);

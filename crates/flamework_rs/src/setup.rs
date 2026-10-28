@@ -122,15 +122,19 @@ impl FwShared {
 
     /// The `Reflect` import's specifier. Inside core itself, `Reflect` is imported by its relative module path.
     pub fn reflect_specifier(&self, file_name: &str) -> String {
-        if self.package_name == CORE_PACKAGE {
-            let module = node_path::join(&[&self.root_dir, "src", "reflect"]);
-            let relative =
-                node_path::relative(&node_path::dirname(file_name), &module).replace('\\', "/");
-            // `"./" + relative || "."`: never empty.
-            format!("./{relative}")
-        } else {
-            CORE_PACKAGE.to_owned()
-        }
+        reflect_specifier(&self.package_name, &self.root_dir, file_name)
+    }
+}
+
+/// [`FwShared::reflect_specifier`] from the package name and root directory.
+pub(crate) fn reflect_specifier(package_name: &str, root_dir: &str, file_name: &str) -> String {
+    if package_name == CORE_PACKAGE {
+        let module = node_path::join(&[root_dir, "src", "reflect"]);
+        let relative = node_path::relative(&node_path::dirname(file_name), &module).replace('\\', "/");
+        // `"./" + relative || "."`: never empty.
+        format!("./{relative}")
+    } else {
+        CORE_PACKAGE.to_owned()
     }
 }
 
@@ -227,8 +231,10 @@ fn previous_build_info(
 pub fn setup(cx: &mut SetupCx<'_>, state: &mut FwState) -> Result<FwShared, Fatal> {
     let services = cx.project();
     let project_dir = services.data.project_path.clone();
-    let state_file =
-        build_info::incremental_state_name(&project_dir, services.path_translator.build_info_output_path.as_deref());
+    // The compiler's incremental state file, as the remedies name it: relative to the project, with forward slashes.
+    let state_file = cx
+        .incremental_state_path()
+        .map(|path| node_path::relative_slash(&project_dir, &path.to_string_lossy()));
     let include_dir = services.data.options.include_path.clone();
     let has_rojo = services.data.rojo_config_path.is_some();
     let path_translator = rbxts_project::path_translator::PathTranslator::new(

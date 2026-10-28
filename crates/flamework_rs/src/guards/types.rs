@@ -64,68 +64,6 @@ pub(crate) fn is_internal_property(cx: &mut Cx<'_>, property: P<Symbol>) -> bool
             .is_some_and(|name_type| name_type.flags().intersects(TypeFlags::UniqueESSymbol))
 }
 
-/// TSRS-GAP: a property `ty` declares (itself, through its bases or an intersection's parts) whose name starts with
-/// U+007F and is not an internal one (`"ab": u8`). tsrs spells its internal names with that character where
-/// TypeScript escapes them with `__`, and its checker takes such a user name for a reserved one
-/// (`is_reserved_member_name`): it lists no such property, so a serializer or guard would leave out a field TS5
-/// keeps. The caller refuses the type with [`hidden_property_message`]. This catches only a name written as a
-/// property name (or a computed string literal) of a declared object, interface or class type. Every other way to
-/// make such a key is invisible here: a const or enum computed key, an intersection (tsrs drops the part from the
-/// intersection itself), mapped types (`Record`, `Partial`, `Omit`, `keyof`-derived), an instance guard's
-/// intersection, and `Modding.Many` maps and macro types' fields; there the property is left out silently (README,
-/// "Known limitations"). The fix belongs in tsrs.
-pub(crate) fn hidden_declared_property(cx: &mut Cx<'_>, ty: P<Type>) -> Option<String> {
-    let mut seen = std::collections::HashSet::new();
-    hidden_declared_property_in(cx, ty, &mut seen, 0)
-}
-
-fn hidden_declared_property_in(
-    cx: &mut Cx<'_>,
-    ty: P<Type>,
-    seen: &mut std::collections::HashSet<P<Type>>,
-    depth: u32,
-) -> Option<String> {
-    if depth > 16 || !seen.insert(ty) {
-        return None;
-    }
-    if ty.flags().intersects(TypeFlags::Intersection) {
-        return ty.types().iter().find_map(|&part| hidden_declared_property_in(cx, part, seen, depth + 1));
-    }
-    if !ty.flags().intersects(TypeFlags::Object) {
-        return None;
-    }
-    if let Some(members) = ty.symbol().and_then(|symbol| symbol.members()) {
-        for member in members.values() {
-            let user_key = member.declarations().iter().any(|declaration| {
-                declaration.name().is_some_and(|name| match name.kind() {
-                    Kind::StringLiteral | Kind::NoSubstitutionTemplateLiteral => true,
-                    Kind::ComputedPropertyName => name.expression().is_some_and(|expression| {
-                        matches!(expression.kind(), Kind::StringLiteral | Kind::NoSubstitutionTemplateLiteral)
-                    }),
-                    _ => false,
-                })
-            });
-            if user_key && tsrs_checker::utilities::is_reserved_member_name(member.name()) {
-                return Some(member.name().to_owned());
-            }
-        }
-    }
-    let target = if object_flags(ty).intersects(ObjectFlags::Reference) { ty.target() } else { Some(ty) };
-    let target = target.filter(|t| object_flags(*t).intersects(ObjectFlags::ClassOrInterface))?;
-    let bases = cx.checker().get_base_types_exported(target).to_vec();
-    bases.into_iter().find_map(|base| hidden_declared_property_in(cx, base, seen, depth + 1))
-}
-
-/// The refusal of a type with a property [`hidden_declared_property`] found.
-pub(crate) fn hidden_property_message(name: &str) -> String {
-    let shown: String =
-        name.chars().map(|c| if c == '\u{7f}' { "\\u007f".to_owned() } else { c.to_string() }).collect();
-    format!(
-        "flamework-rs does not support the property '{shown}' yet: rbxts-rs's checker takes a name that starts with \
-         U+007F for one of its own and does not list the property. Rename the property"
-    )
-}
-
 /// `property.name` as TS5 gives it: an internal name escaped as TS5 spells it (`__@sym@12`; a private name is `#x`,
 /// as `symbolName` gives it), any other name as it is. A symbol's id differs between the compilers, so two keys whose
 /// texts agree up to the id (two unique symbols of one name, a user key `"__@zeta@1"` against a real `[zeta]`) may

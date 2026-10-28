@@ -22,7 +22,7 @@ use std::sync::Arc;
 use rbxts_plugin::ts::{Node, P, Symbol};
 use rbxts_plugin::{
     AccessSite, AssignSite, CallSite, CheckerInfo, Claim, ClassFilter, ClassSite, Cx, Fatal, FileIndex, FinishCx,
-    Interest, LuauExpr, LuauStmt, PResult, Plugin, PluginInfo, PluginInstance, SetupCx, SymbolRole, Tag,
+    Interest, KeyAnswer, LuauExpr, LuauStmt, PResult, Plugin, PluginInfo, PluginInstance, SetupCx, SymbolRole, Tag,
 };
 
 use crate::build_info::{GlobUse, PathUse};
@@ -183,6 +183,13 @@ impl Plugin for Flamework {
         Some(crate::packages::TRANSFORMER_PACKAGE)
     }
 
+    /// `transformer.ts`: unless `noSemanticDiagnostics` is `true`, a file whose `getPreEmitDiagnostics` holds an error
+    /// is left untransformed and its located diagnostics are reported through `context.addDiagnostic`, explained
+    /// ([`FwInstance::explain_checker_diagnostic`]).
+    fn forwards_checker_diagnostics(&self, shared: &FwShared) -> bool {
+        shared.config.no_semantic_diagnostics != Some(true)
+    }
+
     fn setup(&self, cx: &mut SetupCx<'_>, state: &mut FwState) -> Result<Arc<FwShared>, Fatal> {
         crate::setup::setup(cx, state).map(Arc::new)
     }
@@ -223,6 +230,9 @@ impl PluginInstance for FwInstance {
 
     fn interest(&self, interest: &mut Interest) {
         interest.calls_by_symbol();
+        // An optional chain's outermost call, before the chain is compiled: TS5 replaced that call node (inlined and
+        // rewritten macros, packed sends through `?.`).
+        interest.calls_chain_outer();
         // Metadata is decided by JSDoc, not by a decorator, so every class is offered.
         interest.classes(ClassFilter::All);
         // Components (F6): attribute setters and obfuscated keys.
@@ -264,7 +274,7 @@ impl PluginInstance for FwInstance {
         }
     }
 
-    fn property_key(&self, cx: &mut Cx<'_>, access: &AccessSite, tag: Tag) -> PResult<Claim<String>> {
+    fn property_key_answer(&self, cx: &mut Cx<'_>, access: &AccessSite, tag: Tag) -> PResult<Claim<KeyAnswer>> {
         if tag != crate::components::TAG_KEY_OBFUSCATION {
             return Ok(Claim::Decline);
         }
@@ -275,7 +285,7 @@ impl PluginInstance for FwInstance {
         if tag != crate::components::TAG_ATTRIBUTES {
             return Ok(Claim::Decline);
         }
-        crate::components::setter::attribute_setter(cx, site)
+        crate::components::setter::attribute_setter(self, cx, site)
     }
 
     fn class(&self, cx: &mut Cx<'_>, class: &ClassSite) -> PResult<Vec<LuauStmt>> {
@@ -283,13 +293,15 @@ impl PluginInstance for FwInstance {
         crate::class_hook::class_metadata(self, cx, class)
     }
 
-    /// `explainRemovedNetworkMarker`: a dropped networking marker's error names the marker replacing it.
+    /// `explainRemovedNetworkMarker(state, diag) ?? explainRenamed(state, diag) ?? diag`: a dropped networking marker's
+    /// error names the marker replacing it, a name renamed or removed before beta its replacement.
     fn explain_checker_diagnostic(
         &self,
         cx: &mut Cx<'_>,
         diagnostic: P<rbxts_plugin::ts::Diagnostic>,
     ) -> Option<rbxts_plugin::PluginDiagnostic> {
         crate::networking::mode::explain_removed_marker(cx, diagnostic)
+            .or_else(|| crate::renamed::explain_renamed(cx, diagnostic))
     }
 
     fn end_file(&self, cx: &mut Cx<'_>) -> PResult<FwFilePart> {

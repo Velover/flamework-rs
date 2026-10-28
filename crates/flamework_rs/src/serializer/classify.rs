@@ -509,9 +509,6 @@ impl Gen<'_, '_, '_> {
     // --- objects -----------------------------------------------------------------------------------------------
 
     fn classify_object(&mut self, ty: P<Type>) -> GResult<Rc<Kind>> {
-        if let Some(name) = crate::guards::types::hidden_declared_property(self.cx, ty) {
-            return Err(self.fail(&crate::guards::types::hidden_property_message(&name)));
-        }
         let index_infos = self.cx.checker().get_index_infos_of_type_exported(ty).to_vec();
         let mut properties = Vec::new();
         for property in typeinfo::properties_in_ts_order(self.cx, ty) {
@@ -536,7 +533,7 @@ impl Gen<'_, '_, '_> {
             return Ok(self.kind(Kind::Map(Shape::Type(key), Shape::Type(value))));
         }
 
-        let ordered = self.field_order(ty, properties)?;
+        let ordered = self.field_order(ty, properties);
         let mut fields = Vec::new();
         for property in ordered {
             let property_type = typeinfo::ts5_type_of_property(self.cx, ty, property).unwrap();

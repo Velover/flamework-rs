@@ -23,6 +23,52 @@ use crate::metadata::{NodeMetadata, get_symbol, implements_entries};
 use crate::packages::{COMPONENTS_PACKAGE, CORE_PACKAGE};
 use crate::plugin::FwInstance;
 
+/// `addFileImport` of `export` from `specifier` asked for by the hook of `node`, ordered with the file's plugin imports
+/// as the TS transformer added it. It transforms a reflected class's members before its decorators
+/// (`transformClassDeclaration`'s `updateClass`), so an import asked for inside a member of one is ordered as if
+/// asked for at the class (`Cx::import_named_at`), ahead of what its decorators ask for, though they are written
+/// first; the outermost such class around `node` wins. Anything else is ordered at the hook's node.
+///
+/// The class hook asks for `Reflect` after rbxts-rs has compiled the members, where the TS transformer asked for it
+/// first: so `Reflect` (`reflect`, [`FwShared::reflect_specifier`]) is asked for at the class before such an import.
+///
+/// [`FwShared::reflect_specifier`]: crate::setup::FwShared::reflect_specifier
+pub(crate) fn import_named(
+    cx: &mut Cx<'_>,
+    reflect: &str,
+    specifier: &str,
+    export: &str,
+    node: P<Node>,
+) -> PResult<LuauExpr> {
+    let mut anchor = None;
+    let mut child = node;
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        if parent.kind() == Kind::ClassDeclaration && parent.members().contains(&child) && is_reflected(cx, parent) {
+            anchor = Some(parent);
+        }
+        child = parent;
+        current = parent.parent();
+    }
+    match anchor {
+        Some(class) => {
+            cx.import_named_at(reflect, "Reflect", class)?;
+            cx.import_named_at(specifier, export, class)
+        }
+        None => cx.import_named(specifier, export),
+    }
+}
+
+/// The class hook's test for a class it reflects (`transformClassDeclaration`), uncached: a named class declaration
+/// with a symbol and reflect metadata.
+fn is_reflected(cx: &mut Cx<'_>, class: P<Node>) -> bool {
+    if class.name().is_none() || get_symbol(cx, class).is_none() {
+        return false;
+    }
+    NodeMetadata::parse(cx, class).is_requested("reflect")
+        || class.members().iter().any(|&member| NodeMetadata::parse(cx, member).is_requested("reflect"))
+}
+
 /// Which of `@Provider()` and `@Component()` a class carries itself.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct DecoratorKinds {
@@ -61,7 +107,7 @@ pub(crate) fn class_metadata(fw: &FwInstance, cx: &mut Cx<'_>, class: &ClassSite
     fw.file.borrow_mut().current_key = key;
 
     let specifier = fw.shared.reflect_specifier(&cx.file().path);
-    let reflect = cx.import_named(&specifier, "Reflect")?;
+    let reflect = import_named(cx, &specifier, &specifier, "Reflect", node)?;
     let name_text = class_name.text();
 
     let mut statements: Vec<LuauStmt> = Vec::new();

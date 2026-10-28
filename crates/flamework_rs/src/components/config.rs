@@ -305,7 +305,7 @@ fn refuse_duplicates(
         let Some(name) = property.name().filter(|_| Some(property) != dropped) else { continue };
         if effective_name(cx, name).is_some_and(|text| added.contains(&text)) {
             let message = "An object literal cannot have multiple properties with the same name.";
-            abort = abort.or(cx.report(PluginDiagnostic::error(name, message).with_source("1117")));
+            abort = abort.or(cx.report(PluginDiagnostic::error(name, message).with_code(1117)));
         }
     }
     abort

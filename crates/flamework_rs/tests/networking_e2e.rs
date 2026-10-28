@@ -7,10 +7,10 @@
 //! client and server sides (`crate::networking`).
 //!
 //! `tests/fixture_f5/expected` holds the TS5 pipeline's output (roblox-ts master with the published 2.0.0-beta.0
-//! transformer) for every file but two, each compared whole. The two differ from TS5's in shape only (README, Known
-//! limitations) and are checked on their own: `chained.ts` has sends in an optional chain, which flamework-rs packs
-//! inside the compiler's nil check where TS5 wraps the call in a function, and `scopedReturn.ts` a returned send past
-//! its function's budget of locals, which flamework-rs packs in a function where TS5 puts the statement in a block.
+//! transformer) for every file but one, each compared whole (`chained.ts`: sends in an optional chain, in a function
+//! that checks the chain's start, as TS5). The one differs from TS5's in shape only (README, Known limitations) and is
+//! checked on its own: `scopedReturn.ts` has a returned send past its function's budget of locals, which flamework-rs
+//! packs in a function where TS5 puts the statement in a block.
 //!
 //! The project is copied to a temporary directory with a `node_modules` as an install has it (`support::project`);
 //! without the monorepo and the `@rbxts` packages the tests are skipped, saying so.
@@ -52,15 +52,6 @@ fn every_call_shape_builds_and_matches_ts5() {
     }
     assert!(compared >= 6, "expected outputs missing ({compared})");
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-
-    // The optional chain: packed after the nil check, the payload only built when the chain goes on.
-    let chained = luau(&report, "chained.luau");
-    let check = chained.find("if _result ~= nil then").expect(chained);
-    let packed = chained.find("buffer.create").expect(chained);
-    assert!(check < packed, "{chained}");
-    assert!(chained.contains("_result = _result.alpha:_fire(buf"), "{chained}");
-    assert!(chained.contains("_result_1 = _result_1.charlie:_fire()"), "{chained}");
-    assert!(!chained.contains("function()"), "{chained}");
 
     // A returned send past its function's budget of locals: in a function of its own, where TS5 puts the return
     // statement in a `do` block with the packing. The sends before it are in `do` blocks, as TS5's.
@@ -134,6 +125,37 @@ fn a_removed_marker_is_explained() {
         "{errors:#?}"
     );
     assert!(has("Write 'Networking.Raw<...>'. 'RawUnreliable' would make the event unreliable."), "{errors:#?}");
+}
+
+/// `explainRenamed`: TypeScript's error for a name renamed or removed before beta names the replacement, where
+/// Flamework's package declares it; a user's own name that matches keeps TypeScript's message. With
+/// `noSemanticDiagnostics`, nothing is explained (TS5 output of the same source: fwapi round, `v2/ren-src`).
+#[test]
+fn a_renamed_name_is_explained() {
+    let Some(project) = Project::new(FIXTURE, "renamed") else { return };
+    std::fs::remove_dir_all(project.root.join("src")).unwrap();
+    project.write(
+        "src/renamed.ts",
+        "import { BaseComponent, Component, ComponentStreamingMode } from \"@flamework-experimental/components\";\n\
+         export const mode = ComponentStreamingMode.Default;\n\
+         @Component({ tag: \"Ren\", ancestorWhitelist: [] })\n\
+         export class Ren extends BaseComponent {}\n\
+         export const y = ({ x: 1 } as { x: number }).onPostIgnite;\n",
+    );
+    let report = project.build_with(Flamework::new());
+    let errors = errors(&report);
+    let has = |text: &str| errors.iter().any(|e| e.contains(text));
+    assert_eq!(errors.len(), 3, "{errors:#?}");
+    assert!(
+        has("'ComponentStreamingMode.Default' was removed before beta. It stood for \
+             'ComponentStreamingMode.Contextual', which replaces it.\nWrite 'Contextual'."),
+        "{errors:#?}"
+    );
+    assert!(
+        has("'ancestorWhitelist' was renamed 'ancestorAllowList' before beta.\nWrite 'ancestorAllowList'."),
+        "{errors:#?}"
+    );
+    assert!(has("Property 'onPostIgnite' does not exist on type '{ x: number; }'."), "{errors:#?}");
 }
 
 /// Middleware has to be an object literal the call site can rename: written as a variable, or as a shorthand property

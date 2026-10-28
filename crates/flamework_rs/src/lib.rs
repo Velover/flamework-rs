@@ -62,6 +62,7 @@ pub mod part_codec;
 pub mod place_source;
 pub mod plugin;
 pub mod random;
+mod renamed;
 pub mod schema;
 pub(crate) mod serializer;
 pub mod setup;

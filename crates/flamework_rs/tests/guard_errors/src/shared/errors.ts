@@ -58,10 +58,3 @@ interface SymbolKeyed {
 }
 export const symbolKey = Flamework.createGuard<SymbolKeyed>();
 export const nestedSymbolKey = Flamework.createGuard<{ a: number; nested: { b: number; [marker]: number } }>();
-
-/** A string key that starts with U+007F: rbxts-rs's checker does not list it (TS5 keeps it), so it is refused. */
-interface Reserved {
-	"\u007fab": number;
-	b: number;
-}
-export const reserved = Flamework.createGuard<Reserved>();

@@ -596,15 +596,9 @@ impl Gen<'_, '_, '_> {
 
     // --- fields ------------------------------------------------------------------------------------------------
 
-    /// `fieldOrder(type, properties)`. An order refused on the way ([`Gen::refuse_rest_order`]) fails the type, so
-    /// that its kind is not kept for the file's later values, which then refuse it too.
-    pub(crate) fn field_order(&mut self, ty: P<Type>, properties: Vec<P<Symbol>>) -> GResult<Vec<P<Symbol>>> {
-        let earlier = self.g.sticky.take();
+    /// `fieldOrder(type, properties)`.
+    pub(crate) fn field_order(&mut self, ty: P<Type>, properties: Vec<P<Symbol>>) -> Vec<P<Symbol>> {
         let order = self.property_order(ty, &mut HashSet::new());
-        let refused = std::mem::replace(&mut self.g.sticky, earlier);
-        if let Some(abort) = refused {
-            return Err(abort);
-        }
         let mut position: HashMap<&str, usize> = HashMap::new();
         for (i, name) in order.iter().enumerate() {
             position.insert(name.as_str(), i);
@@ -614,7 +608,7 @@ impl Gen<'_, '_, '_> {
             let at = |p: &P<Symbol>| position.get(p.name()).copied().unwrap_or(usize::MAX);
             at(a).cmp(&at(b)).then_with(|| utf16_cmp(a.name(), b.name()))
         });
-        Ok(sorted)
+        sorted
     }
 
     /// `propertyOrder(type, seen)`.
@@ -678,123 +672,7 @@ impl Gen<'_, '_, '_> {
             order.extend(run);
             start = end;
         }
-        if !one_run(&mapped_by)
-            && let Some(rest) = self.rest_behind(ty, &mut HashSet::new(), 0)
-        {
-            self.refuse_rest_order(ty, rest);
-        }
         order
-    }
-
-    /// RBXTS-GAP: an object rest (`const { a, ...rest } = value`) lists its properties in the order of the type it was
-    /// taken from (`getRestType`), which rbxts-rs's TypeScript 5 property order does not rebuild for a rest yet (it
-    /// keeps TypeScript 7's, by declaration), and every type whose list is built from the rest's (a spread of it, an
-    /// interface extending it, a homomorphic mapped type over it, ...) inherits that order. The order of a type's
-    /// fields follows its list unless the type is one run ([`one_run`]): its properties go by name (an origin that
-    /// cannot be told, which returns before the runs), or there is one property, or one mapped type made them all,
-    /// whose own order ([`Gen::mapped_order`] of the type the links name) is theirs whatever order a list gives them.
-    /// So a type of several runs is refused when its TypeScript 5 list is built from a rest of several runs
-    /// ([`Gen::rest_behind`]), though TypeScript 7's order may happen to agree; a rest of one run inside it is exact
-    /// (its properties keep their block in the outer list, and their order in it is the mapped type's). The refusal
-    /// is recorded once, and [`Gen::field_order`] fails the type with it.
-    fn refuse_rest_order(&mut self, ty: P<Type>, rest: P<Type>) {
-        if self.g.sticky.is_some() {
-            return;
-        }
-        let text = self.type_text(ty);
-        let what = if rest == ty {
-            "it is an object rest (`const { a, ...rest } = value`)".to_owned()
-        } else {
-            format!("it is built from an object rest (`const {{ a, ...rest }} = value`), '{}'", self.type_text(rest))
-        };
-        let abort = self.fail(&format!(
-            "flamework-rs does not support '{text}' yet: {what}, and rbxts-rs cannot yet give its fields the order \
-             TypeScript 5 gives them (the order in which it lists the properties of the value the rest was taken \
-             from). Write the type out as an interface or an object type instead"
-        ));
-        self.g.sticky = Some(abort);
-    }
-
-    /// An object rest of several runs that `ty`'s TypeScript 5 property list is built from (`ty` itself included):
-    /// the structure rbxts-rs's `ts5_property_order` walks to rebuild a list, walked whole here, the operands it
-    /// cannot place included: an object literal's spread operands (each member of a union operand, the parts of an
-    /// intersection operand, a type variable's apparent type), a class or interface's base types, an anonymous
-    /// instantiation's target, an intersection's parts and a homomorphic mapped type's modifiers type.
-    fn rest_behind(&mut self, ty: P<Type>, seen: &mut HashSet<P<Type>>, depth: u32) -> Option<P<Type>> {
-        if depth > 64 || !seen.insert(ty) {
-            return None;
-        }
-        let flags = ty.flags();
-        if flags.intersects(TypeFlags::UnionOrIntersection) {
-            let parts: Vec<P<Type>> = ty.types().to_vec();
-            return parts.into_iter().find_map(|part| self.rest_behind(part, seen, depth + 1));
-        }
-        if flags.intersects(TypeFlags::Instantiable) {
-            let apparent = self.cx.checker().get_apparent_type_exported(ty);
-            return if apparent == ty { None } else { self.rest_behind(apparent, seen, depth + 1) };
-        }
-        if !flags.intersects(TypeFlags::Object) {
-            return None;
-        }
-        let object_flags = ty.object_flags();
-        if object_flags.intersects(ObjectFlags::ObjectRestType) {
-            return self.rest_of_several_runs(ty).then_some(ty);
-        }
-        if object_flags.intersects(ObjectFlags::Mapped) {
-            // Resolving the members resolves the modifiers type.
-            self.cx.checker().get_properties_of_type_exported(ty);
-            let mapped = ty.as_mapped_type();
-            let homomorphic = mapped
-                .declaration
-                .get()
-                .and_then(|d| d.as_mapped_type_node().type_parameter.as_type_parameter_declaration().constraint)
-                .is_some_and(|c| {
-                    c.kind() == SyntaxKind::TypeOperator
-                        && c.as_type_operator_node().operator == SyntaxKind::KeyOfKeyword
-                });
-            let modifiers = mapped.modifiers_type.get().filter(|_| homomorphic)?;
-            let apparent = self.cx.checker().get_apparent_type_exported(modifiers);
-            return self.rest_behind(apparent, seen, depth + 1);
-        }
-        if object_flags.intersects(ObjectFlags::Anonymous) {
-            if let Some(target) = ty.target() {
-                return self.rest_behind(target, seen, depth + 1);
-            }
-            let symbol = ty.symbol()?;
-            let literal = symbol.declarations().first().copied()?;
-            let object_literal = literal.kind() == SyntaxKind::ObjectLiteralExpression;
-            if !symbol.flags().intersects(SymbolFlags::ObjectLiteral) || !object_literal {
-                return None;
-            }
-            let members: Vec<P<Node>> = literal.properties().to_vec();
-            for member in members {
-                if member.kind() != SyntaxKind::SpreadAssignment {
-                    continue;
-                }
-                let Some(expression) = member.expression() else { continue };
-                let operand = self.cx.checker().get_type_at_location(expression);
-                if let Some(rest) = self.rest_behind(operand, seen, depth + 1) {
-                    return Some(rest);
-                }
-            }
-            return None;
-        }
-        let target = if object_flags.intersects(ObjectFlags::Reference) { ty.target().unwrap_or(ty) } else { ty };
-        if !target.object_flags().intersects(ObjectFlags::ClassOrInterface) {
-            return None;
-        }
-        let bases: Vec<P<Type>> = self.cx.checker().get_base_types_exported(target).to_vec();
-        bases.into_iter().find_map(|base| self.rest_behind(base, seen, depth + 1))
-    }
-
-    /// Whether the object rest `ty` is of several runs: not ordered by name, and not [`one_run`].
-    fn rest_of_several_runs(&mut self, ty: P<Type>) -> bool {
-        let properties = typeinfo::properties_in_ts_order(self.cx, ty);
-        let mapped_by: Vec<Option<P<Type>>> = properties.iter().map(|&p| self.mapped_type_of(p)).collect();
-        let unknown_origin = properties.iter().zip(&mapped_by).any(|(p, m)| m.is_none() && p.declarations().is_empty());
-        let synthetic = properties.iter().any(|&p| check_flags(p).intersects(CheckFlags::SyntheticProperty));
-        let by_name = unknown_origin || (synthetic && mapped_by.iter().any(Option::is_some));
-        !by_name && !one_run(&mapped_by)
     }
 
     /// `(property as MappedSymbol).links.mappedType`: the mapped type that made `property`, wherever the property is
@@ -887,12 +765,6 @@ impl Gen<'_, '_, '_> {
         }
         vec![RankPart::Num(5.0), RankPart::Str(String::new()), RankPart::Num(0.0)]
     }
-}
-
-/// Whether properties of these origins (`mappedBy` of each) are one run, whose order does not depend on the order a
-/// list gives them: none or one property, or all made by one mapped type.
-fn one_run(mapped_by: &[Option<P<Type>>]) -> bool {
-    mapped_by.len() <= 1 || mapped_by[0].is_some() && mapped_by.iter().all(|m| *m == mapped_by[0])
 }
 
 /// `intrinsicRank(type)`.

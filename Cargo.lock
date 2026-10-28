@@ -603,7 +603,7 @@ dependencies = [
 [[package]]
 name = "rbxts_cli"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=9e3be62277dfbaaf1deede52c54b1f46e35e4b3f#9e3be62277dfbaaf1deede52c54b1f46e35e4b3f"
 dependencies = [
  "chrono",
  "memory-stats",
@@ -623,12 +623,12 @@ dependencies = [
 [[package]]
 name = "rbxts_luau"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=9e3be62277dfbaaf1deede52c54b1f46e35e4b3f#9e3be62277dfbaaf1deede52c54b1f46e35e4b3f"
 
 [[package]]
 name = "rbxts_luau_check"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=9e3be62277dfbaaf1deede52c54b1f46e35e4b3f#9e3be62277dfbaaf1deede52c54b1f46e35e4b3f"
 dependencies = [
  "cc",
  "luau0-src",
@@ -637,7 +637,7 @@ dependencies = [
 [[package]]
 name = "rbxts_plugin"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=9e3be62277dfbaaf1deede52c54b1f46e35e4b3f#9e3be62277dfbaaf1deede52c54b1f46e35e4b3f"
 dependencies = [
  "rbxts_luau",
  "rbxts_project",
@@ -652,7 +652,7 @@ dependencies = [
 [[package]]
 name = "rbxts_project"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=9e3be62277dfbaaf1deede52c54b1f46e35e4b3f#9e3be62277dfbaaf1deede52c54b1f46e35e4b3f"
 dependencies = [
  "serde_json",
  "tsrs_ast",
@@ -670,7 +670,7 @@ dependencies = [
 [[package]]
 name = "rbxts_transform"
 version = "0.0.0"
-source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=e37fc3482e38a8f96754beb8767b03b757769957#e37fc3482e38a8f96754beb8767b03b757769957"
+source = "git+file:///E:/Projects/TS/Flamework/rbxts-rs?rev=9e3be62277dfbaaf1deede52c54b1f46e35e4b3f#9e3be62277dfbaaf1deede52c54b1f46e35e4b3f"
 dependencies = [
  "rbxts_luau",
  "rbxts_luau_check",

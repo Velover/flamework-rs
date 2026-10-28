@@ -40,6 +40,28 @@ compiler. They need the built Flamework v2 packages (a checkout of its monorepo 
 folder: `FLAMEWORK_RS_RBXTS`). Without them they are skipped, saying so. The unit test that checks the embedded JSON
 schemas against the transformer's reads the monorepo from `FLAMEWORK_MONOREPO`.
 
+## Install
+
+`rbxtsc-fw` is installed with Cargo from a pinned commit, one folder per Flamework version (the paths below are
+examples; `<url>` stands for this repository's git URL):
+
+```sh
+cargo install --git <url> --rev <hash> rbxtsc_fw --root E:\Tools\rbxts\fw-2.0.0-beta.0
+```
+
+That gives `E:\Tools\rbxts\fw-2.0.0-beta.0\bin\rbxtsc-fw.exe`. The plain compiler from rbxts-rs (no Flamework) goes in a
+folder of its own the same way, for example `E:\Tools\rbxts\rbxtsc\`.
+
+- **A project** points its `package.json` build script at the folder that matches its `@flamework-experimental/*`
+  version (`"build": "E:/Tools/rbxts/fw-2.0.0-beta.0/bin/rbxtsc-fw.exe build"`).
+- **Upgrading** is changing that path and the npm packages together, to the folder of the new version.
+- **Cleaning up** an old version is deleting its folder, or `cargo uninstall rbxtsc_fw --root <dir>`.
+- **Where the build goes:** `cargo install` builds in a temporary target directory, removed afterwards, unless
+  `CARGO_TARGET_DIR` is set. A build in a checkout goes to `target/` (or `--target-dir`, or `[build] target-dir` in
+  `.cargo/config.toml`), which `cargo clean` removes. Cargo's git and registry caches under `~/.cargo` (`git`,
+  `registry`) are safe to delete; they are downloaded again when needed.
+- The dev profile is optimised (`opt-level = 3`), so a checkout's `cargo build` gives a usable compiler too.
+
 ## Developing against a local rbxts-rs
 
 To build against a local rbxts-rs checkout instead of the pinned rev, override the git source with path dependencies
@@ -77,28 +99,11 @@ usable on its own). The options are described at the top of `tools/parity.cjs`.
 
 Where flamework-rs's output may differ from Flamework's TS transformer (TypeScript 5) in ways it cannot detect:
 
-- **Property names that start with U+007F (DEL).** rbxts-rs's checker (tsrs) spells its internal names with this
-  character, where TypeScript escapes them with `__`, and takes a user name that starts with U+007F followed by any
-  character other than `@` or `#` for one of its own: it never lists the property. flamework-rs refuses such a name
-  when it is written as a property name of an object, interface or class type (a serializer or a guard of it). Written
-  any other way (a const or enum computed key, an intersection, a mapped type, `Record`, `Partial`, `Omit` or a
-  `keyof`-derived type, an instance-guard intersection, component attributes (read through the `AttributeGuards`
-  mapped type), an instance shape, a `Modding.inspect` or `Many` map, a macro type's fields), the
-  property is left out of serializers, guards and macros without an error, and an object left with no fields is
-  serialized as a blob. The fix belongs in tsrs.
-- **Object rests are refused (not an output difference).** TypeScript 5 lists the properties of an object rest
-  (`const { a, ...rest } = value`) in the order it lists those of `value`'s type; rbxts-rs's TypeScript 5 property
-  order does not rebuild that for a rest yet and keeps TypeScript 7's (by declaration), which differs where `value`'s
-  type is a spread (`{ a, ...b }`), inherits a member it redeclares, or has late-bound members. So a serializer of a
-  rest whose field order depends on that list is refused, even where the two orders happen to agree: any rest with
-  more than one property, except one whose properties a single mapped type (`Pick`, `Omit`, `Record`, ...) made,
-  which goes in that type's own order, or whose properties go by name. A type built from such a rest is refused too
-  where its own field order follows its list: a spread of the rest, an interface extending it, a homomorphic mapped
-  type (`Readonly`, `Partial`, ...) over one of those, wherever they are nested. Write such a type out as an
-  interface or an object type. The fix belongs in rbxts-rs.
-- **Guard text of an object rest.** A guard of an object rest (or of a type built from one) lists its keys
-  (`t.interface({ ... })`) in TypeScript 7's order rather than TypeScript 5's. The guard checks the same keys, so only
-  the generated text differs, not what it accepts or anything on the wire. Same cause as above.
+- **Guard text of a mapped type over a union of keys** (`Pick<T, "b" | "a">`, `Omit`, `Record`, a key-remapping
+  `as` clause, and a rest or spread of one): a guard lists its keys (`t.interface({ ... })`) in another order than
+  TS5, which lists them in the order its checker first made the keys' literal types (it shifts with unrelated
+  edits). The guard checks the same keys, so only the generated text differs, not what it accepts. Serializers of
+  these types order their fields by the mapped type itself and are exact.
 - **Order that depends on symbol ids.** A union that no written type orders (`Box<A | B>` reaching `value: T`) orders
   its members by a text of each type, and an object's text spells a unique-symbol key with the symbol's id
   (`__@sym@12`). Two keys whose texts agree up to the id (two unique symbols with the same name from different modules,
@@ -113,10 +118,6 @@ Where it differs from TS5's output in shape only, with the same behaviour:
   checker first made their literal types, which `keyof` does not fix (it shifts with unrelated edits). The arrays hold
   the members' names and remotes are matched by name, so their order carries no meaning: a server and a client built
   by the two compilers work together. The order the codecs are generated in and their names follow it.
-- **Packed sends in an optional chain** (`events?.alpha.fire(x)`): the packing goes inside the compiler's nil check,
-  where TS5 wraps the call in a function that checks the chain's start, packs, and then evaluates the chain again.
-  The behaviour is the same unless an argument changes what the chain starts from (`box.ev?.alpha.fire(f())` where
-  `f` assigns `box.ev`): TS5 sends through the new value, flamework-rs through the one read before the arguments.
 - **A returned send past its function's budget of locals** (`return events.alpha.fire(x)` in a function that already
   holds many of Flamework's locals): the call and its packing go in a function, where TS5 puts the `return` statement
   in a block of its own with the packing.
@@ -127,6 +128,11 @@ Where it differs from TS5's output in shape only, with the same behaviour:
 
 Where it differs on purpose:
 
+- **A packed send followed by more of its optional chain** (`maybe?.fns.add.invoke(x).andThen(f)`): flamework-rs packs
+  it inside the compiler's nil check, so the rest of the chain runs only when `maybe` is defined. TS5 does not build it:
+  the function it wraps the send in returns `undefined` when `maybe` is, and the type check of its output refuses
+  the rest of the chain on that (TS2532). A send that ends its chain (`maybe?.alpha.fire(x)`, the usual case) is
+  compiled as TS5 compiles it.
 - **Obfuscated keys through an optional chain** (`maybe?.alpha.fire(x)`, `f()?.ns.leaf.fire(x)` with
   `transformer.obfuscation`): flamework-rs obfuscates the member name as it does outside a chain. TS5 reads the key
   obfuscation marker off the receiver's type as it is, which may be `undefined` there, so it leaves the name as

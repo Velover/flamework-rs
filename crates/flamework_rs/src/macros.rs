@@ -27,16 +27,16 @@
 //! **Call shapes.** A call is a macro only when its callee is an identifier or a property access (TypeScript's
 //! `getSymbolAtLocation` has no symbol for any other callee): `o["m"]()`, `(o.m)()` and `o.m!()` are plain calls,
 //! and `super()` is skipped. `super.m()`, `super.m?.()`, `o.m?.()`, `o?.m()` and `o?.m?.()` generate their
-//! parameters as any call does (`compile_call` keeps roblox-ts's `super.m(self, …)` and the chain's nil checks, the
-//! generated arguments inside them). Not yet as TS5 does: an inlined or rewritten macro call inside an optional chain
-//! (`CallSite::in_optional_chain`). TS5 replaces the call node: an inlined call's value then stands for the whole
-//! chain (`maybe?.inlined<T>()` is the value, `maybe` is not evaluated), and a rewritten call keeps only its own
-//! `?.` (`o.m?.<T>(x)` nil-checks `Flamework._implements` itself, `o?.m<T>(x)` is a plain call to it). rbxts-rs offers
-//! such a call inside the chain's nil check with the receiver compiled, where nothing can match TS5's behaviour (the
-//! value would be nil when the chain stops, and a `declare`d core macro's member is nil at runtime), so it is refused
-//! with an error naming the workaround, until the compiler offers the chain's outermost call before compiling the
-//! chain. An inlined call followed by more of its chain (`maybe?.inlined<T>().size()`) fails TS5's type check of its
-//! output.
+//! parameters as any call does (`compile_call_with` keeps roblox-ts's `super.m(self, …)` and the chain's nil checks,
+//! the generated arguments inside them). An inlined or rewritten macro call that is the last link of an optional chain
+//! is taken when the compiler offers the chain's outermost call, before anything of the chain is compiled
+//! (`Interest::calls_chain_outer`), as TS5 replaced the call node: an inlined call's value stands for the whole chain
+//! (`maybe?.inlined<T>()` is the value, `maybe` is not evaluated), and a rewritten call keeps only its own `?.`
+//! (`o.m?.<T>(x)` nil-checks `Flamework._implements` itself, `o?.m<T>(x)` is a plain call to it). One followed by
+//! more of its chain (`maybe?.inlined<T>().size()`, mostly a type error in TS5's output) is refused.
+//!
+//! **Argument order.** The generated values are `Arg::Deferred` slots of `compile_call_with`, built when the
+//! lowering reaches them among the written arguments, so that their names come out in TS5's print order.
 //!
 //! **Networking.** The `network-decoder` / `network-result-decoder` intrinsics are decoders built with the file's
 //! serializers ([`crate::serializer::build_decoder`]), `network-unreliable` reads the member's markers, and
@@ -229,6 +229,14 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
     let signature = cx.checker().get_resolved_signature_exported(expression);
     let Some(declaration) = signature.declaration() else { return Ok(Claim::Decline) };
     let metadata = fw.metadata(cx, declaration);
+    // The chain's outermost call, offered before the chain is compiled: only an inlined or rewritten call takes the
+    // chain's place (TS5 replaced the call node); any other is lowered with the chain, offered again inside it.
+    if call.chain_outer
+        && !matches!(metadata.symbols("intrinsic-inline"), Some([_]))
+        && metadata.symbols("intrinsic-flamework-rewrite").and_then(|s| s.first()).is_none()
+    {
+        return Ok(Claim::Decline);
+    }
 
     // `intrinsic-middleware`: the middleware objects whose names are obfuscated (none without obfuscation).
     let middleware = match metadata.symbols("intrinsic-middleware") {
@@ -262,8 +270,8 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         validate_const(cx, expression, signature, &constants)?;
     }
     let rewrite = metadata.symbols("intrinsic-flamework-rewrite").and_then(|s| s.first().copied());
-    // Not lowered as TS5 lowers it yet: refused, before anything is compiled (see the module docs).
-    if call.in_optional_chain && (inline.is_some() || rewrite.is_some()) {
+    // Not the chain's last link (see the module docs): refused, before anything is compiled.
+    if call.in_optional_chain && !call.chain_outer && (inline.is_some() || rewrite.is_some()) {
         return Err(cx.error(expression, optional_chain_gap(inline.is_some())));
     }
     // `intrinsic-component-config`: the config parameters of a class decorator (`transformComponentConfig`).
@@ -282,55 +290,37 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
     // Taken: from here on, build and compile. What the serializers of the root statement hoisted printed ahead of
     // it, so it is named first (a hook may not decline after naming).
     crate::serializer::enter_statement(fw, cx, expression);
-    // The written arguments ahead of the last generated one, compiled in index order between the generated values
-    // when that is exact (`written_ahead`), so that names come out in TS5's print order; else `Original` slots.
-    let ahead = match parameters.last() {
-        Some(&(highest, _)) if inline.is_none() && component.is_none() => {
-            written_ahead(fw, cx, call, expression, highest, &parameters)
-        }
-        _ => None,
-    };
-    let mut written: Vec<(usize, LuauExpr)> = Vec::new();
-    let mut values: Vec<(usize, LuauExpr)> = Vec::with_capacity(parameters.len());
-    for (index, found) in &parameters {
-        if let Some(ahead) = &ahead {
-            for &(at, argument) in ahead {
-                if at < *index && !written.iter().any(|(w, _)| *w == at) {
-                    written.push((at, cx.compile_expr(argument)?));
-                }
-            }
-        }
-        let key = fw.order_key(cx, expression, (0, *index as u32));
-        fw.file.borrow_mut().current_key = key.clone();
-        let builder = Builder { fw, node: expression, key };
-        values.push((*index, builder.build(cx, found)?));
-    }
-    // The config replaces its argument (one that is not an object literal too, as the TS does).
+    // The generated values by argument index: a parameter's metadata, a component config (which replaces its
+    // argument, one that is not an object literal too, as the TS does), a network's middleware.
+    let mut generated: Vec<(usize, Generated<'_>)> =
+        parameters.iter().map(|(index, found)| (*index, Generated::Macro(found))).collect();
     if let Some((class, indices)) = &component {
         for &index in indices {
-            if values.iter().any(|(i, _)| *i == index) {
-                continue;
+            if !generated.iter().any(|(i, _)| *i == index) {
+                generated.push((index, Generated::Config(*class)));
             }
-            let key = fw.order_key(cx, expression, (0, index as u32));
-            let argument = call.args.get(index).copied();
-            let value = crate::components::config::component_config(fw, cx, *class, argument, key)?;
-            values.push((index, value));
         }
-        values.sort_by_key(|(i, _)| *i);
     }
-
     for (index, object) in middleware {
-        if !values.iter().any(|(i, _)| *i == index) {
-            values.push((index, crate::networking::middleware::compile(fw, cx, expression, object)?));
+        if !generated.iter().any(|(i, _)| *i == index) {
+            generated.push((index, Generated::Middleware(object)));
         }
     }
-    values.sort_by_key(|(i, _)| *i);
+    generated.sort_by_key(|(i, _)| *i);
+    let site = GeneratedSite { fw, call, expression };
 
     if let Some(index) = inline {
         // `inlineMacroIntrinsic`: the call is the value of that parameter (the TS cast goes: Luau has none). The
         // callee is not compiled, so its import may go, as the TS transformer's output drops it.
         elide_callee_import(cx, expression);
-        if let Some((_, value)) = values.into_iter().find(|(i, _)| *i == index) {
+        let mut value = None;
+        for (at, what) in &generated {
+            let built = site.build(cx, *at, what)?;
+            if *at == index {
+                value = Some(built);
+            }
+        }
+        if let Some(value) = value {
             return Ok(Claim::Take(value));
         }
         return match call.args.get(index) {
@@ -339,16 +329,14 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         };
     }
 
-    let highest = values.iter().map(|(i, _)| *i).max();
+    // Each generated value in its slot, built when the lowering reaches it (`Arg::Deferred`); missing arguments before
+    // the last one padded with `nil`.
+    let highest = generated.last().map(|(i, _)| *i);
     let count = call.args.len().max(highest.map_or(0, |h| h + 1));
     let mut args = Vec::with_capacity(count);
-    let mut values = values.into_iter().peekable();
     for index in 0..count {
-        if values.peek().is_some_and(|(i, _)| *i == index) {
-            let (_, value) = values.next().expect("peeked");
-            args.push(Arg::Luau(value));
-        } else if let Some(at) = written.iter().position(|(i, _)| *i == index) {
-            args.push(Arg::Luau(written.swap_remove(at).1));
+        if let Some(slot) = generated.iter().position(|(i, _)| *i == index) {
+            args.push(Arg::Deferred(slot));
         } else {
             match call.args.get(index) {
                 Some(&arg) => args.push(Arg::Original(arg)),
@@ -366,110 +354,70 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
                     format!("The rewrite target '{}' is not declared inside a namespace.", target.name()),
                 ));
             };
-            let namespace = cx.import_named(CORE_PACKAGE, namespace.name())?;
+            let reflect = fw.shared.reflect_specifier(&cx.file().path);
+            let namespace = crate::class_hook::import_named(cx, &reflect, CORE_PACKAGE, namespace.name(), expression)?;
             elide_callee_import(cx, expression);
             Callee::Function(create::property(namespace, target.name()))
         }
         None => Callee::Original,
     };
-    cx.compile_call(call, callee, args).map(Claim::Take)
+    cx.compile_call_with(call, callee, args, |cx, slot| {
+        let (index, what) = &generated[slot];
+        site.build(cx, *index, what)
+    })
+    .map(Claim::Take)
 }
 
-/// The written arguments of `call` ahead of its last generated parameter (`highest`), to compile in index order
-/// between the generated values, as the TS transformer built them and its printer named them: `wrap<T>(
-/// Flamework.createGuard<U>())` names the guard's locals before the serializer's. `compile_call` compiles every
-/// `Original` slot after the plugin built its `Luau` values, and compiles a chain-start call's callee after the
-/// prereqs of arguments compiled earlier, so this is done only where it changes nothing but the naming order: when
-/// one of them holds a call (a nested macro that may name something), each of them is [`is_plain_operand`], which
-/// leaves no prereqs, and so is the callee, holding no call, unless the call is in an optional chain (offered with
-/// its callee or receiver already compiled). Otherwise `None`: they are `Original` slots, and a name in them
-/// comes after the generated values' (the gap `crate::ts_names` describes).
-fn written_ahead(
-    fw: &FwInstance,
-    cx: &mut Cx<'_>,
-    site: &CallSite,
-    call: P<Node>,
-    highest: usize,
-    parameters: &[(usize, UserMacro)],
-) -> Option<Vec<(usize, P<Node>)>> {
-    let arguments = call.arguments();
-    let ahead: Vec<(usize, P<Node>)> = (0..highest.min(arguments.len()))
-        .filter(|index| !parameters.iter().any(|(i, _)| i == index))
-        .map(|index| (index, arguments[index]))
-        .collect();
-    if !ahead.iter().any(|&(_, argument)| holds_call(argument)) {
-        return None;
-    }
-    let callee = call.expression()?;
-    if !site.in_optional_chain && (holds_call(callee) || !is_plain_operand(fw, cx, callee)) {
-        return None;
-    }
-    ahead.iter().all(|&(_, argument)| is_plain_operand(fw, cx, argument)).then_some(ahead)
+/// A value [`user_macro`] generates for an argument.
+enum Generated<'a> {
+    /// A parameter's metadata.
+    Macro(&'a UserMacro),
+    /// `intrinsic-component-config`: the config of the decorated class.
+    Config(P<Node>),
+    /// `intrinsic-middleware`: the middleware object, its names obfuscated.
+    Middleware(P<Node>),
 }
 
-fn holds_call(node: P<Node>) -> bool {
-    if matches!(node.kind(), Kind::CallExpression | Kind::NewExpression) {
-        return true;
-    }
-    let mut found = false;
-    node.for_each_child(&mut |child| {
-        found = holds_call(child);
-        found
-    });
-    found
+/// The call [`user_macro`] builds generated values for.
+struct GeneratedSite<'a> {
+    fw: &'a FwInstance,
+    call: &'a CallSite,
+    expression: P<Node>,
 }
 
-/// An expression roblox-ts lowers to a single expression, with no prereqs, read from the AST: a literal, an
-/// identifier, `this`, `super`, a property access (not in an optional chain) on one, or a call of a user macro (not
-/// in an optional chain) whose callee and arguments are such. (Flamework's own markers leave no prereqs; a macro type
-/// of the build's that writes some through `MacroCx::cx` is not foreseen.)
-fn is_plain_operand(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>) -> bool {
-    match node.kind() {
-        Kind::Identifier
-        | Kind::ThisKeyword
-        | Kind::SuperKeyword
-        | Kind::StringLiteral
-        | Kind::NumericLiteral
-        | Kind::NoSubstitutionTemplateLiteral
-        | Kind::TrueKeyword
-        | Kind::FalseKeyword => true,
-        Kind::PropertyAccessExpression => {
-            !tsrs_ast::is_optional_chain(node) && node.expression().is_some_and(|e| is_plain_operand(fw, cx, e))
+impl GeneratedSite<'_> {
+    /// The value of argument `index`.
+    fn build(&self, cx: &mut Cx<'_>, index: usize, what: &Generated<'_>) -> PResult<LuauExpr> {
+        let (fw, expression) = (self.fw, self.expression);
+        match what {
+            Generated::Macro(found) => {
+                let key = fw.order_key(cx, expression, (0, index as u32));
+                fw.file.borrow_mut().current_key = key.clone();
+                Builder { fw, node: expression, key }.build(cx, found)
+            }
+            Generated::Config(class) => {
+                let key = fw.order_key(cx, expression, (0, index as u32));
+                let argument = self.call.args.get(index).copied();
+                crate::components::config::component_config(fw, cx, *class, argument, key)
+            }
+            Generated::Middleware(object) => crate::networking::middleware::compile(fw, cx, expression, *object),
         }
-        Kind::CallExpression | Kind::NewExpression => {
-            !tsrs_ast::is_optional_chain(node)
-                && is_macro_callee(fw, cx, node)
-                && node.expression().is_some_and(|e| is_plain_operand(fw, cx, e))
-                && node.arguments().iter().all(|&a| is_plain_operand(fw, cx, a))
-        }
-        _ => false,
     }
 }
 
-/// The error for an inlined or rewritten macro call inside an optional chain (see the module docs).
+/// The error for an inlined or rewritten macro call followed by more of its optional chain (see the module docs).
 fn optional_chain_gap(inlined: bool) -> String {
-    let (what, ts) = if inlined {
-        (
-            "an inlined",
-            "replaces the whole chain with the value: nothing of the chain is evaluated, and the value is never nil",
-        )
-    } else {
-        (
-            "a rewritten",
-            "calls the implementation in place of the whole chain (nil-checking it only when the call is written \
-             `?.()`): nothing before the call is evaluated",
-        )
-    };
+    let what = if inlined { "an inlined" } else { "a rewritten" };
     format!(
-        "flamework-rs cannot compile {what} macro call inside an optional chain as Flamework's TS transformer does \
-         yet: it {ts}. Call it without `?.`, or check the receiver first. (This waits on a compiler API: rbxts-rs \
-         does not offer such a call to plugins before the chain is compiled.)"
+        "flamework-rs cannot compile {what} macro call followed by more of its optional chain as Flamework's TS \
+         transformer does. Call it without `?.`, or end the chain at the call."
     )
 }
 
 /// The call's callee is not compiled (inlined or rewritten): asks the compiler to elide the import its root name
 /// comes from (`inlinedText` in `inlinedText<T>()`, `Flamework` in `Flamework.env("X")`), which it does unless
-/// the file's Luau still uses it.
+/// the file's Luau still uses it. Not a namespace import (`ns` in `ns.inlined<T>()`, `ns?.inlined<T>()`), which
+/// TS5 keeps (TypeScript counts the reference whatever replaced the call).
 fn elide_callee_import(cx: &mut Cx<'_>, call: P<Node>) {
     let mut root = call.expression();
     while let Some(node) = root {
@@ -488,7 +436,7 @@ fn elide_callee_import(cx: &mut Cx<'_>, call: P<Node>) {
     if let Some(&declaration) = symbol.declarations().first()
         && matches!(
             declaration.kind(),
-            Kind::ImportSpecifier | Kind::ImportClause | Kind::NamespaceImport | Kind::ImportEqualsDeclaration
+            Kind::ImportSpecifier | Kind::ImportClause | Kind::ImportEqualsDeclaration
         )
     {
         cx.request_import_elision(declaration);
@@ -501,7 +449,7 @@ fn elide_callee_import(cx: &mut Cx<'_>, call: P<Node>) {
 /// skipped. Known unsupported shapes: TypeScript also finds a symbol for a `this` callee and, through
 /// `isNamedDeclaration`, for a named class or function expression callee; a macro there would need `@metadata macro`
 /// on a `this` parameter or a class expression, which never happens in practice. A parenthesized decorator call
-/// (`@(deco<T>())`) is a macro in TS5 but is declined here until the compiler offers it as a call (requested).
+/// (`@(deco<T>())`) is offered as an ordinary call, as TS5 transforms it.
 pub(crate) fn has_symbol_callee(call: P<Node>) -> bool {
     call.expression().is_some_and(|callee| matches!(callee.kind(), Kind::Identifier | Kind::PropertyAccessExpression))
 }

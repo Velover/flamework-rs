@@ -25,7 +25,8 @@ impl FwInstance {
                     file.part.late_keys.push(key.clone());
                 }
                 drop(file);
-                cx.late_string(&key)
+                // The TS made it with `factory.createStringLiteral`, as a known id.
+                cx.late_string_synthesized(&key)
             }
         }
     }
