@@ -157,6 +157,7 @@ name = "flamework_rs"
 version = "0.0.0"
 dependencies = [
  "dragonbox_ecma",
+ "rbxts_cli",
  "rbxts_luau",
  "rbxts_plugin",
  "rbxts_project",

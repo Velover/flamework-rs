@@ -1,0 +1,809 @@
+{
+	"cases": [
+		{
+			"name": "buildArtifacts.test.ts:72 a build that fails > with a type error writes no artifacts, and the next good build writes them",
+			"files": {
+				"src/glob/artifactProbe.ts": "export const broken: number = \"text\";\n"
+			}
+		},
+		{
+			"name": "buildArtifacts.test.ts:94 a build that fails > with an error only roblox-ts reports writes no artifacts either",
+			"files": {
+				"src/glob/artifactProbe.ts": "export const fixed = 1;\n",
+				"src/glob/artifactProbeNull.ts": "export const value = null;\n"
+			},
+			"contains": [
+				"null"
+			]
+		},
+		{
+			"name": "buildArtifacts.test.ts:323 an incremental build whose Flamework inputs changed > is refused, naming what changed, until it builds every file",
+			"files": {},
+			"env": {
+				"FLAMEWORK_FIXTURE_IDMODE": "short"
+			},
+			"tsconfig": "tsconfig.inputs-probe.json",
+			"contains": [
+				"Delete inputs-probe.tsbuildinfo and build again: the next build compiles every file.",
+				"Flamework's inputs changed since flamework.build was written: idGenerationMode is 'short', and was 'full'."
+			],
+			"covered": "changed inputs on an incremental build: build_info_setup.rs changed_inputs_name_the_mode_before_the_config and incremental_harness.rs (rbxts-rs starts a new flamework.build where TS5 refuses, by design)"
+		},
+		{
+			"name": "buildArtifacts.test.ts:323 an incremental build whose Flamework inputs changed > is refused, naming what changed, until it builds every file",
+			"files": {},
+			"env": {
+				"FLAMEWORK_FIXTURE_DEDUP": "4"
+			},
+			"tsconfig": "tsconfig.inputs-probe.json",
+			"contains": [
+				"Delete inputs-probe.tsbuildinfo and build again: the next build compiles every file.",
+				"an option in flamework.config.json that shapes the emitted code changed"
+			],
+			"covered": "changed inputs on an incremental build: build_info_setup.rs changed_inputs_name_the_mode_before_the_config and incremental_harness.rs (rbxts-rs starts a new flamework.build where TS5 refuses, by design)"
+		},
+		{
+			"name": "buildArtifacts.test.ts:323 an incremental build whose Flamework inputs changed > is refused, naming what changed, until it builds every file",
+			"files": {},
+			"env": {
+				"FLAMEWORK_FIXTURE_SCOPES": "other"
+			},
+			"tsconfig": "tsconfig.inputs-probe.json",
+			"contains": [
+				"Delete inputs-probe.tsbuildinfo and build again: the next build compiles every file.",
+				"the value of the variable FLAMEWORK_FIXTURE_SCOPES, which Flamework.env inlines, changed"
+			],
+			"covered": "changed inputs on an incremental build: build_info_setup.rs changed_inputs_name_the_mode_before_the_config and incremental_harness.rs (rbxts-rs starts a new flamework.build where TS5 refuses, by design)"
+		},
+		{
+			"name": "generatedCode.test.ts:645 globals the caller's declarations hide > refuse the ones that cannot be reached another way, naming the global and the declaration",
+			"files": {
+				"src/genHideArray.ts": "import { Networking } from \"@flamework-experimental/networking\";\ninterface E { send(value: defined[]): void }\nconst client = Networking.createEvent<E, {}>().createClient({});\nexport function send(values: defined[]) {\n\tconst Array = 1;\n\tclient.send.fire(values);\n\treturn Array;\n}\n",
+				"src/genHideEnum.ts": "import { Networking } from \"@flamework-experimental/networking\";\ninterface E { send(value: Enum.Material | string): void }\nconst client = Networking.createEvent<E, {}>().createClient({});\nexport function send(value: Enum.Material | string) {\n\tconst Enum = 3;\n\tclient.send.fire(value);\n\treturn Enum;\n}\n",
+				"src/genHideModuleBuffer.ts": "import { Networking } from \"@flamework-experimental/networking\";\ninterface E { send(value: string): void }\nconst client = Networking.createEvent<E, {}>().createClient({});\nconst buffer = 5;\nexport function send(value: string) {\n\tclient.send.fire(value);\n\treturn buffer;\n}\n",
+				"src/genHideModuleWarn.ts": "import { Serialization } from \"@flamework-experimental/core\";\nimport { Networking } from \"@flamework-experimental/networking\";\ninterface E { send(value: Serialization.Implicit.u16): void }\nconst client = Networking.createEvent<E, {}>().createClient({});\nfunction warn(message: string) {\n\tprint(message);\n}\nexport function send(value: number) {\n\tclient.send.fire(value);\n\twarn(\"sent\");\n}\n",
+				"src/genHideTypeIs.ts": "import { Networking } from \"@flamework-experimental/networking\";\ninterface E { send(value: string | number): void }\nconst client = Networking.createEvent<E, {}>().createClient({});\nexport function send(value: string | number, typeIs: (v: unknown) => boolean) {\n\tclient.send.fire(value);\n\treturn typeIs(value);\n}\n",
+				"src/genShared.ts": "import { Serialization } from \"@flamework-experimental/core\";\nimport { Networking } from \"@flamework-experimental/networking\";\n\nexport type GridCoord = readonly [x: Serialization.i16, y: Serialization.i16, z: Serialization.i16];\n/** The mutable twin, which writes exactly the same bytes. */\nexport type MutableCoord = [x: Serialization.i16, y: Serialization.i16, z: Serialization.i16];\n\nexport interface Placement {\n\torigin: GridCoord;\n\trotation: number;\n\tname: string;\n\ttemplateId: number;\n}\n\nexport interface MutablePlacement {\n\torigin: MutableCoord;\n\trotation: number;\n\tname: string;\n\ttemplateId: number;\n}\n\ninterface CoordEvents {\n\tplace(origin: GridCoord, rotation: number): void;\n\tplaceNested(data: Placement): void;\n\tplaceRest(...origins: GridCoord[]): void;\n\tplaceOpt(origin: GridCoord | undefined): void;\n\tplaceOr(origin: GridCoord | string): void;\n\tindexSig(value: { [k: string]: number }): void;\n\tserializedPlace: Networking.Serialized<(origin: GridCoord) => void>;\n}\n\ninterface MutableCoordEvents {\n\tplace(origin: MutableCoord, rotation: number): void;\n\tplaceNested(data: MutablePlacement): void;\n\tplaceRest(...origins: MutableCoord[]): void;\n\tplaceOpt(origin: MutableCoord | undefined): void;\n\tplaceOr(origin: MutableCoord | string): void;\n\tindexSig(value: Map<string, number>): void;\n\tserializedPlace: Networking.Serialized<(origin: MutableCoord) => void>;\n}\n\ninterface CoordFunctions {\n\task(origin: GridCoord): GridCoord;\n}\n\ninterface MutableCoordFunctions {\n\task(origin: MutableCoord): MutableCoord;\n}\n\nexport const CoordNetwork = Networking.createEvent<CoordEvents, {}>();\nexport const MutableCoordNetwork = Networking.createEvent<MutableCoordEvents, {}>();\nexport const CoordFunctionNetwork = Networking.createFunction<CoordFunctions, {}>();\nexport const MutableCoordFunctionNetwork = Networking.createFunction<MutableCoordFunctions, {}>();\n\n/** A library's action type (Reflex broadcasts one with an `arguments` tuple), and every name a local cannot take. */\nexport interface Action {\n\tname: string;\n\targuments: [value: number];\n}\n\nexport interface Reserved {\n\tname: string;\n\t\"arguments\": [value: number];\n\t\"eval\": [value: number];\n\t\"class\": [value: number];\n\t\"let\": [value: number];\n\t\"static\": [value: number];\n\t\"yield\": [value: number];\n\t\"await\": [value: number];\n\t\"implements\": [value: number];\n\t\"interface\": [value: number];\n\t\"package\": [value: number];\n\t\"private\": [value: number];\n\t\"protected\": [value: number];\n\t\"public\": [value: number];\n\t\"enum\": [value: number];\n\t\"function\": [value: number];\n\t\"delete\": [value: number];\n\t\"typeof\": [value: number];\n\t\"end\": [value: number];\n\t\"local\": [value: number];\n\t\"then\": [value: number];\n\t\"nil\": [value: number];\n\t\"repeat\": [value: number];\n\t\"until\": [value: number];\n\t\"elseif\": [value: number];\n\t\"not\": [value: number];\n\t\"and\": [value: number];\n\t\"or\": [value: number];\n\t\"self\": [value: number];\n\t\"type\": [value: number];\n\t\"game\": [value: number];\n\t\"string\": [value: number];\n\t\"table\": [value: number];\n\t\"1st\": [value: number];\n\t\"\": [value: number];\n\t\"two words\": [value: number];\n}\n\nexport type SerializedData = { buffer: buffer; blobs: defined[] };\n\ninterface EcsEvents {\n\tSendReliable(data: SerializedData): void;\n}\n\ninterface ActionEvents {\n\tdispatch(action: Action): void;\n\treserved(data: Reserved): void;\n}\n\nexport const EcsNetwork = Networking.createEvent<{}, EcsEvents>();\nexport const ActionNetwork = Networking.createEvent<ActionEvents, {}>();\n"
+			},
+			"env": {
+				"FLAMEWORK_FIXTURE_CHECKS_MODE": "warn"
+			},
+			"contains": [
+				"genHideArray.ts:6:2 - error TS @flamework-experimental/transformer: Flamework's generated code here uses the global 'Array', which the declaration of 'Array' on line 5 hides. Rename that declaration.",
+				"genHideTypeIs.ts:5:2 - error TS @flamework-experimental/transformer: Flamework's generated code here uses the global 'typeIs', which the declaration of 'typeIs' on line 4 hides. Rename that declaration.",
+				"genHideModuleBuffer.ts:6:2 - error TS @flamework-experimental/transformer: Flamework's generated code here uses the global 'buffer', which the declaration of 'buffer' on line 4 hides. Rename that declaration.",
+				"genHideEnum.ts:6:2 - error TS @flamework-experimental/transformer: Flamework's generated code here uses the global 'Enum', which the declaration of 'Enum' on line 5 hides. Rename that declaration.",
+				"genHideModuleWarn.ts:9:2 - error TS @flamework-experimental/transformer: Flamework's generated code here uses the global 'warn', which the declaration of 'warn' on line 5 hides. Rename that declaration."
+			]
+		},
+		{
+			"name": "luauLimits.test.ts:281 a main chunk past Luau's 200 locals > is a build error where the file passes it, its imports counted",
+			"files": {
+				"src/lluListsOver.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<{ a: boolean; b: Array<string> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }>();\n",
+				"src/lluMapsOver.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<{ a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, { a: boolean; b: Map<string, string> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }>();\n",
+				"src/lluOwnOnly.ts": "export const x0 = [0];\nexport const x1 = [1];\nexport const x2 = [2];\nexport const x3 = [3];\nexport const x4 = [4];\nexport const x5 = [5];\nexport const x6 = [6];\nexport const x7 = [7];\nexport const x8 = [8];\nexport const x9 = [9];\nexport const x10 = [10];\nexport const x11 = [11];\nexport const x12 = [12];\nexport const x13 = [13];\nexport const x14 = [14];\nexport const x15 = [15];\nexport const x16 = [16];\nexport const x17 = [17];\nexport const x18 = [18];\nexport const x19 = [19];\nexport const x20 = [20];\nexport const x21 = [21];\nexport const x22 = [22];\nexport const x23 = [23];\nexport const x24 = [24];\nexport const x25 = [25];\nexport const x26 = [26];\nexport const x27 = [27];\nexport const x28 = [28];\nexport const x29 = [29];\nexport const x30 = [30];\nexport const x31 = [31];\nexport const x32 = [32];\nexport const x33 = [33];\nexport const x34 = [34];\nexport const x35 = [35];\nexport const x36 = [36];\nexport const x37 = [37];\nexport const x38 = [38];\nexport const x39 = [39];\nexport const x40 = [40];\nexport const x41 = [41];\nexport const x42 = [42];\nexport const x43 = [43];\nexport const x44 = [44];\nexport const x45 = [45];\nexport const x46 = [46];\nexport const x47 = [47];\nexport const x48 = [48];\nexport const x49 = [49];\nexport const x50 = [50];\nexport const x51 = [51];\nexport const x52 = [52];\nexport const x53 = [53];\nexport const x54 = [54];\nexport const x55 = [55];\nexport const x56 = [56];\nexport const x57 = [57];\nexport const x58 = [58];\nexport const x59 = [59];\nexport const x60 = [60];\nexport const x61 = [61];\nexport const x62 = [62];\nexport const x63 = [63];\nexport const x64 = [64];\nexport const x65 = [65];\nexport const x66 = [66];\nexport const x67 = [67];\nexport const x68 = [68];\nexport const x69 = [69];\nexport const x70 = [70];\nexport const x71 = [71];\nexport const x72 = [72];\nexport const x73 = [73];\nexport const x74 = [74];\nexport const x75 = [75];\nexport const x76 = [76];\nexport const x77 = [77];\nexport const x78 = [78];\nexport const x79 = [79];\nexport const x80 = [80];\nexport const x81 = [81];\nexport const x82 = [82];\nexport const x83 = [83];\nexport const x84 = [84];\nexport const x85 = [85];\nexport const x86 = [86];\nexport const x87 = [87];\nexport const x88 = [88];\nexport const x89 = [89];\nexport const x90 = [90];\nexport const x91 = [91];\nexport const x92 = [92];\nexport const x93 = [93];\nexport const x94 = [94];\nexport const x95 = [95];\nexport const x96 = [96];\nexport const x97 = [97];\nexport const x98 = [98];\nexport const x99 = [99];\nexport const x100 = [100];\nexport const x101 = [101];\nexport const x102 = [102];\nexport const x103 = [103];\nexport const x104 = [104];\nexport const x105 = [105];\nexport const x106 = [106];\nexport const x107 = [107];\nexport const x108 = [108];\nexport const x109 = [109];\nexport const x110 = [110];\nexport const x111 = [111];\nexport const x112 = [112];\nexport const x113 = [113];\nexport const x114 = [114];\nexport const x115 = [115];\nexport const x116 = [116];\nexport const x117 = [117];\nexport const x118 = [118];\nexport const x119 = [119];\nexport const x120 = [120];\nexport const x121 = [121];\nexport const x122 = [122];\nexport const x123 = [123];\nexport const x124 = [124];\nexport const x125 = [125];\nexport const x126 = [126];\nexport const x127 = [127];\nexport const x128 = [128];\nexport const x129 = [129];\nexport const x130 = [130];\nexport const x131 = [131];\nexport const x132 = [132];\nexport const x133 = [133];\nexport const x134 = [134];\nexport const x135 = [135];\nexport const x136 = [136];\nexport const x137 = [137];\nexport const x138 = [138];\nexport const x139 = [139];\nexport const x140 = [140];\nexport const x141 = [141];\nexport const x142 = [142];\nexport const x143 = [143];\nexport const x144 = [144];\nexport const x145 = [145];\nexport const x146 = [146];\nexport const x147 = [147];\nexport const x148 = [148];\nexport const x149 = [149];\nexport const x150 = [150];\nexport const x151 = [151];\nexport const x152 = [152];\nexport const x153 = [153];\nexport const x154 = [154];\nexport const x155 = [155];\nexport const x156 = [156];\nexport const x157 = [157];\nexport const x158 = [158];\nexport const x159 = [159];\nexport const x160 = [160];\nexport const x161 = [161];\nexport const x162 = [162];\nexport const x163 = [163];\nexport const x164 = [164];\nexport const x165 = [165];\nexport const x166 = [166];\nexport const x167 = [167];\nexport const x168 = [168];\nexport const x169 = [169];\nexport const x170 = [170];\nexport const x171 = [171];\nexport const x172 = [172];\nexport const x173 = [173];\nexport const x174 = [174];\nexport const x175 = [175];\nexport const x176 = [176];\nexport const x177 = [177];\nexport const x178 = [178];\nexport const x179 = [179];\nexport const x180 = [180];\nexport const x181 = [181];\nexport const x182 = [182];\nexport const x183 = [183];\nexport const x184 = [184];\nexport const x185 = [185];\nexport const x186 = [186];\nexport const x187 = [187];\nexport const x188 = [188];\nexport const x189 = [189];\nexport const x190 = [190];\nexport const x191 = [191];\nexport const x192 = [192];\nexport const x193 = [193];\nexport const x194 = [194];\nexport const x195 = [195];\nexport const x196 = [196];\nexport const x197 = [197];\nexport const x198 = [198];\nexport const x199 = [199];\nexport const x200 = [200];",
+				"src/lluPastLimit.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<{ a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: { a: string; b: string } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }>();\n",
+				"src/lluPastRegisterLimit.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<Array<string | undefined>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>();\n",
+				"src/lluSendPastLimits.ts": "import { Networking } from \"@flamework-experimental/networking\";\ninterface ServerEvents { one(s: string): void; three(a: string, b: string, c: string): void; four(a: string, b: string, c: string, d: string): void }\ninterface ClientEvents {}\nconst events = Networking.createEvent<ServerEvents, ClientEvents>();\nexport const server = events.createServer({});\nconst client = events.createClient({});\nexport function go(p0: string, p1: string, p2: string, p3: string, p4: string, p5: string, p6: string, p7: string, p8: string, p9: string, p10: string, p11: string, p12: string, p13: string, p14: string, p15: string, p16: string, p17: string, p18: string, p19: string, p20: string, p21: string, p22: string, p23: string, p24: string, p25: string, p26: string, p27: string, p28: string, p29: string, p30: string, p31: string, p32: string, p33: string, p34: string, p35: string, p36: string, p37: string, p38: string, p39: string, p40: string, p41: string, p42: string, p43: string, p44: string, p45: string, p46: string, p47: string, p48: string, p49: string, p50: string, p51: string, p52: string, p53: string, p54: string, p55: string, p56: string, p57: string, p58: string, p59: string, p60: string, p61: string, p62: string, p63: string, p64: string, p65: string, p66: string, p67: string, p68: string, p69: string, p70: string, p71: string, p72: string, p73: string, p74: string, p75: string, p76: string, p77: string, p78: string, p79: string, p80: string, p81: string, p82: string, p83: string, p84: string, p85: string, p86: string, p87: string, p88: string, p89: string, p90: string, p91: string, p92: string, p93: string, p94: string, p95: string, p96: string, p97: string, p98: string, p99: string, p100: string, p101: string, p102: string, p103: string, p104: string, p105: string, p106: string, p107: string, p108: string, p109: string, p110: string, p111: string, p112: string, p113: string, p114: string, p115: string, p116: string, p117: string, p118: string, p119: string, p120: string, p121: string, p122: string, p123: string, p124: string, p125: string, p126: string, p127: string, p128: string, p129: string, p130: string, p131: string, p132: string, p133: string, p134: string, p135: string, p136: string, p137: string, p138: string, p139: string, p140: string, p141: string, p142: string, p143: string, p144: string, p145: string, p146: string, p147: string, p148: string, p149: string, p150: string, p151: string, p152: string, p153: string, p154: string, p155: string, p156: string, p157: string, p158: string, p159: string, p160: string, p161: string, p162: string, p163: string, p164: string, p165: string, p166: string, p167: string, p168: string, p169: string, p170: string, p171: string, p172: string, p173: string, p174: string, p175: string, p176: string, p177: string, p178: string, p179: string, p180: string, p181: string, p182: string, p183: string, p184: string, p185: string, p186: string, p187: string, p188: string, p189: string, p190: string, p191: string, p192: string, p193: string, p194: string, p195: string, p196: string, p197: string, p198: string, p199: string) {\n\tclient.three.fire(p0, p1, p199);\n}\n",
+				"src/lluSetsOver.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<Set<string>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>();\n",
+				"src/lluStringListsOver.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<{ a: string; b: Array<string> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }> }>();\n",
+				"src/lluUnder.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const x0 = [0];\nexport const x1 = [1];\nexport const x2 = [2];\nexport const x3 = [3];\nexport const x4 = [4];\nexport const x5 = [5];\nexport const x6 = [6];\nexport const x7 = [7];\nexport const x8 = [8];\nexport const x9 = [9];\nexport const x10 = [10];\nexport const x11 = [11];\nexport const x12 = [12];\nexport const x13 = [13];\nexport const x14 = [14];\nexport const x15 = [15];\nexport const x16 = [16];\nexport const x17 = [17];\nexport const x18 = [18];\nexport const x19 = [19];\nexport const x20 = [20];\nexport const x21 = [21];\nexport const x22 = [22];\nexport const x23 = [23];\nexport const x24 = [24];\nexport const x25 = [25];\nexport const x26 = [26];\nexport const x27 = [27];\nexport const x28 = [28];\nexport const x29 = [29];\nexport const x30 = [30];\nexport const x31 = [31];\nexport const x32 = [32];\nexport const x33 = [33];\nexport const x34 = [34];\nexport const x35 = [35];\nexport const x36 = [36];\nexport const x37 = [37];\nexport const x38 = [38];\nexport const x39 = [39];\nexport const x40 = [40];\nexport const x41 = [41];\nexport const x42 = [42];\nexport const x43 = [43];\nexport const x44 = [44];\nexport const x45 = [45];\nexport const x46 = [46];\nexport const x47 = [47];\nexport const x48 = [48];\nexport const x49 = [49];\nexport const x50 = [50];\nexport const x51 = [51];\nexport const x52 = [52];\nexport const x53 = [53];\nexport const x54 = [54];\nexport const x55 = [55];\nexport const x56 = [56];\nexport const x57 = [57];\nexport const x58 = [58];\nexport const x59 = [59];\nexport const x60 = [60];\nexport const x61 = [61];\nexport const x62 = [62];\nexport const x63 = [63];\nexport const x64 = [64];\nexport const x65 = [65];\nexport const x66 = [66];\nexport const x67 = [67];\nexport const x68 = [68];\nexport const x69 = [69];\nexport const x70 = [70];\nexport const x71 = [71];\nexport const x72 = [72];\nexport const x73 = [73];\nexport const x74 = [74];\nexport const x75 = [75];\nexport const x76 = [76];\nexport const x77 = [77];\nexport const x78 = [78];\nexport const x79 = [79];\nexport const x80 = [80];\nexport const x81 = [81];\nexport const x82 = [82];\nexport const x83 = [83];\nexport const x84 = [84];\nexport const x85 = [85];\nexport const x86 = [86];\nexport const x87 = [87];\nexport const x88 = [88];\nexport const x89 = [89];\nexport const x90 = [90];\nexport const x91 = [91];\nexport const x92 = [92];\nexport const x93 = [93];\nexport const x94 = [94];\nexport const x95 = [95];\nexport const x96 = [96];\nexport const x97 = [97];\nexport const x98 = [98];\nexport const x99 = [99];\nexport const x100 = [100];\nexport const x101 = [101];\nexport const x102 = [102];\nexport const x103 = [103];\nexport const x104 = [104];\nexport const x105 = [105];\nexport const x106 = [106];\nexport const x107 = [107];\nexport const x108 = [108];\nexport const x109 = [109];\nexport const x110 = [110];\nexport const x111 = [111];\nexport const x112 = [112];\nexport const x113 = [113];\nexport const x114 = [114];\nexport const x115 = [115];\nexport const x116 = [116];\nexport const x117 = [117];\nexport const x118 = [118];\nexport const x119 = [119];\nexport const x120 = [120];\nexport const x121 = [121];\nexport const x122 = [122];\nexport const x123 = [123];\nexport const x124 = [124];\nexport const x125 = [125];\nexport const x126 = [126];\nexport const x127 = [127];\nexport const x128 = [128];\nexport const x129 = [129];\nexport const x130 = [130];\nexport const x131 = [131];\nexport const x132 = [132];\nexport const x133 = [133];\nexport const x134 = [134];\nexport const x135 = [135];\nexport const x136 = [136];\nexport const x137 = [137];\nexport const x138 = [138];\nexport const x139 = [139];\nexport const x140 = [140];\nexport const x141 = [141];\nexport const x142 = [142];\nexport const x143 = [143];\nexport const x144 = [144];\nexport const x145 = [145];\nexport const x146 = [146];\nexport const x147 = [147];\nexport const x148 = [148];\nexport const x149 = [149];\nexport const s = Flamework.createSerializer<\"a\" | \"b\">();\n"
+			},
+			"line": [
+				[
+					"lluListsOver.ts",
+					"error",
+					"built one field at a time or not, past Luau's limit of 200 locals / 255 registers"
+				],
+				[
+					"lluStringListsOver.ts",
+					"error",
+					"built one field at a time or not, past Luau's limit of 200 locals / 255 registers"
+				],
+				[
+					"lluMapsOver.ts",
+					"error",
+					"built one field at a time or not, past Luau's limit of 200 locals / 255 registers"
+				],
+				[
+					"lluSetsOver.ts",
+					"error",
+					"built one field at a time or not, past Luau's limit of 200 locals / 255 registers"
+				],
+				[
+					"lluSetsOver.ts",
+					"error",
+					"needs about 114 locals and 262 registers"
+				],
+				[
+					"lluSetsOver.ts",
+					"error",
+					"Split the type into smaller named types"
+				],
+				[
+					"lluPastLimit.ts",
+					"error",
+					"needs about 201 locals and 204 registers"
+				],
+				[
+					"lluPastRegisterLimit.ts",
+					"error",
+					"needs about 171 locals and 256 registers"
+				]
+			],
+			"not_line": [
+				[
+					"lluOwnOnly.ts",
+					"error"
+				],
+				[
+					"lluUnder.ts",
+					"error"
+				],
+				[
+					"lluSendPastLimits.ts",
+					"error"
+				]
+			]
+		},
+		{
+			"name": "luauLimits.test.ts:281 a main chunk past Luau's 200 locals > is a build error where the file passes it, its imports counted (the main chunk)",
+			"files": {
+				"src/lluOver.ts": "import { Flamework } from \"@flamework-experimental/core\";\nexport const x0 = [0];\nexport const x1 = [1];\nexport const x2 = [2];\nexport const x3 = [3];\nexport const x4 = [4];\nexport const x5 = [5];\nexport const x6 = [6];\nexport const x7 = [7];\nexport const x8 = [8];\nexport const x9 = [9];\nexport const x10 = [10];\nexport const x11 = [11];\nexport const x12 = [12];\nexport const x13 = [13];\nexport const x14 = [14];\nexport const x15 = [15];\nexport const x16 = [16];\nexport const x17 = [17];\nexport const x18 = [18];\nexport const x19 = [19];\nexport const x20 = [20];\nexport const x21 = [21];\nexport const x22 = [22];\nexport const x23 = [23];\nexport const x24 = [24];\nexport const x25 = [25];\nexport const x26 = [26];\nexport const x27 = [27];\nexport const x28 = [28];\nexport const x29 = [29];\nexport const x30 = [30];\nexport const x31 = [31];\nexport const x32 = [32];\nexport const x33 = [33];\nexport const x34 = [34];\nexport const x35 = [35];\nexport const x36 = [36];\nexport const x37 = [37];\nexport const x38 = [38];\nexport const x39 = [39];\nexport const x40 = [40];\nexport const x41 = [41];\nexport const x42 = [42];\nexport const x43 = [43];\nexport const x44 = [44];\nexport const x45 = [45];\nexport const x46 = [46];\nexport const x47 = [47];\nexport const x48 = [48];\nexport const x49 = [49];\nexport const x50 = [50];\nexport const x51 = [51];\nexport const x52 = [52];\nexport const x53 = [53];\nexport const x54 = [54];\nexport const x55 = [55];\nexport const x56 = [56];\nexport const x57 = [57];\nexport const x58 = [58];\nexport const x59 = [59];\nexport const x60 = [60];\nexport const x61 = [61];\nexport const x62 = [62];\nexport const x63 = [63];\nexport const x64 = [64];\nexport const x65 = [65];\nexport const x66 = [66];\nexport const x67 = [67];\nexport const x68 = [68];\nexport const x69 = [69];\nexport const x70 = [70];\nexport const x71 = [71];\nexport const x72 = [72];\nexport const x73 = [73];\nexport const x74 = [74];\nexport const x75 = [75];\nexport const x76 = [76];\nexport const x77 = [77];\nexport const x78 = [78];\nexport const x79 = [79];\nexport const x80 = [80];\nexport const x81 = [81];\nexport const x82 = [82];\nexport const x83 = [83];\nexport const x84 = [84];\nexport const x85 = [85];\nexport const x86 = [86];\nexport const x87 = [87];\nexport const x88 = [88];\nexport const x89 = [89];\nexport const x90 = [90];\nexport const x91 = [91];\nexport const x92 = [92];\nexport const x93 = [93];\nexport const x94 = [94];\nexport const x95 = [95];\nexport const x96 = [96];\nexport const x97 = [97];\nexport const x98 = [98];\nexport const x99 = [99];\nexport const x100 = [100];\nexport const x101 = [101];\nexport const x102 = [102];\nexport const x103 = [103];\nexport const x104 = [104];\nexport const x105 = [105];\nexport const x106 = [106];\nexport const x107 = [107];\nexport const x108 = [108];\nexport const x109 = [109];\nexport const x110 = [110];\nexport const x111 = [111];\nexport const x112 = [112];\nexport const x113 = [113];\nexport const x114 = [114];\nexport const x115 = [115];\nexport const x116 = [116];\nexport const x117 = [117];\nexport const x118 = [118];\nexport const x119 = [119];\nexport const x120 = [120];\nexport const x121 = [121];\nexport const x122 = [122];\nexport const x123 = [123];\nexport const x124 = [124];\nexport const x125 = [125];\nexport const x126 = [126];\nexport const x127 = [127];\nexport const x128 = [128];\nexport const x129 = [129];\nexport const x130 = [130];\nexport const x131 = [131];\nexport const x132 = [132];\nexport const x133 = [133];\nexport const x134 = [134];\nexport const x135 = [135];\nexport const x136 = [136];\nexport const x137 = [137];\nexport const x138 = [138];\nexport const x139 = [139];\nexport const x140 = [140];\nexport const x141 = [141];\nexport const x142 = [142];\nexport const x143 = [143];\nexport const x144 = [144];\nexport const x145 = [145];\nexport const x146 = [146];\nexport const x147 = [147];\nexport const x148 = [148];\nexport const x149 = [149];\nexport const x150 = [150];\nexport const x151 = [151];\nexport const x152 = [152];\nexport const x153 = [153];\nexport const x154 = [154];\nexport const x155 = [155];\nexport const x156 = [156];\nexport const x157 = [157];\nexport const x158 = [158];\nexport const x159 = [159];\nexport const x160 = [160];\nexport const x161 = [161];\nexport const x162 = [162];\nexport const x163 = [163];\nexport const x164 = [164];\nexport const x165 = [165];\nexport const x166 = [166];\nexport const x167 = [167];\nexport const x168 = [168];\nexport const x169 = [169];\nexport const x170 = [170];\nexport const x171 = [171];\nexport const x172 = [172];\nexport const x173 = [173];\nexport const x174 = [174];\nexport const x175 = [175];\nexport const x176 = [176];\nexport const x177 = [177];\nexport const x178 = [178];\nexport const x179 = [179];\nexport const x180 = [180];\nexport const x181 = [181];\nexport const x182 = [182];\nexport const x183 = [183];\nexport const x184 = [184];\nexport const x185 = [185];\nexport const x186 = [186];\nexport const x187 = [187];\nexport const x188 = [188];\nexport const x189 = [189];\nexport const x190 = [190];\nexport const x191 = [191];\nexport const x192 = [192];\nexport const x193 = [193];\nexport const x194 = [194];\nexport const x195 = [195];\nexport const s = Flamework.createSerializer<\"a\" | \"b\">();\n"
+			},
+			"line": [
+				[
+					"lluOver.ts:198:1 - error",
+					"This file declares at least 201 locals at its top level, 2 of them in code Flamework generated"
+				]
+			],
+			"marked": "rbxts-rs spills a main chunk past Luau's 200 locals (DESIGN §10.2, luauLimits row): the file builds"
+		},
+		{
+			"name": "macros.test.ts:241 guards of recursive types > refuse a component whose instance tree holds itself again as a required child",
+			"files": {
+				"src/recursiveInstanceTree.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\n\ninterface Branch extends Folder {\n\tTwig: Branch;\n}\n\n@Component({ tag: \"RecursiveInstanceTree\" })\nexport class RecursiveInstanceTree extends BaseComponent<{}, Branch> {}\n"
+			},
+			"contains": [
+				"Child 'Twig' of the instance tree of 'RecursiveInstanceTree' has the type of the tree around it, 'Branch'"
+			],
+			"excludes": [
+				"Maximum call stack size exceeded"
+			]
+		},
+		{
+			"name": "macros.test.ts:262 guards of recursive types > refuse a type that makes a new type of itself as it nests, rather than overflowing",
+			"files": {
+				"src/expandingGuard.ts": "import { Flamework } from \"@flamework-experimental/core\";\n\ninterface Box<T> {\n\tvalue: T;\n\tinner?: Box<Box<T>>;\n}\n\nexport const boxGuard = Flamework.createGuard<Box<number>>();\n"
+			},
+			"contains": [
+				"Flamework cannot generate a guard for a type nested over 500 types deep"
+			],
+			"excludes": [
+				"Maximum call stack size exceeded"
+			]
+		},
+		{
+			"name": "macros.test.ts:286 guards of recursive types > refuse a type that makes two new types of itself as it nests, in bounded time and memory",
+			"files": {
+				"src/expandingTwiceGuard.ts": "import { Flamework } from \"@flamework-experimental/core\";\n\ninterface Box2<T> {\n\ta?: Box2<Box2<T>>;\n\tb?: Box2<[T]>;\n}\n\nexport const box2Guard = Flamework.createGuard<Box2<number>>();\n"
+			},
+			"contains": [
+				"Flamework cannot generate a guard for a type nested over 500 types deep"
+			],
+			"line": [
+				[
+					"src",
+					"expandingTwiceGuard.ts:8:",
+					" - error"
+				]
+			],
+			"excludes": [
+				"heap out of memory"
+			]
+		},
+		{
+			"name": "macros.test.ts:374 Flamework.env > types the result as a plain string only when a fallback is given",
+			"files": {
+				"src/envType.ts": "import { Flamework } from \"@flamework-experimental/core\";\n\nexport const value: string = Flamework.env(\"FLAMEWORK_FIXTURE_SCOPES\");\n"
+			},
+			"contains": [
+				"TS2322"
+			]
+		},
+		{
+			"name": "macros.test.ts:388 Flamework.env > rejects a fallback that is not a string literal",
+			"files": {
+				"src/envFallback.ts": "import { Flamework } from \"@flamework-experimental/core\";\n\ndeclare const computed: string;\nexport const value = Flamework.env(\"FLAMEWORK_FIXTURE_SCOPES\", computed);\n"
+			},
+			"contains": [
+				"expects the fallback as a string literal"
+			]
+		},
+		{
+			"name": "macros.test.ts:412 requireModules > fails the build on a path the Rojo project does not map, and says why",
+			"files": {
+				"src/requireModulesUnmapped.ts": "import { requireModules } from \"@flamework-experimental/core\";\n\nrequireModules(\"elsewhere/commands\");\n"
+			},
+			"contains": [
+				"Could not find Rojo data for 'elsewhere/commands'",
+				"It compiles to 'elsewhere/commands', and no $path in your Rojo project covers that"
+			]
+		},
+		{
+			"name": "macros.test.ts:429 requireModules > fails the build on a path that is not a string literal",
+			"files": {
+				"src/requireModulesComputed.ts": "import { requireModules } from \"@flamework-experimental/core\";\n\ndeclare const folder: string;\nrequireModules(folder);\n"
+			},
+			"contains": [
+				"Path is invalid, expected string literal and got: string"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:217 conflicting markers > refuses Raw with Serialized",
+			"files": {
+				"src/conflictingMarkers.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tboth: Networking.Raw<Networking.Serialized<(value: number) => void>>;\n}\n\ninterface ProbeFunctions {\n\tfine(value: number): number;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, {}>();\nexport const functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const server = events.createServer({});\n"
+			},
+			"contains": [
+				"The networking member 'both' is declared both Raw and Serialized",
+				"Keep one of the two markers."
+			]
+		},
+		{
+			"name": "networkModes.test.ts:226 conflicting markers > refuses Serialized with Raw, in either order and through Unreliable",
+			"files": {
+				"src/conflictingMarkers.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tboth: Networking.Unreliable<Networking.Serialized<Networking.Raw<(value: number) => void>>>;\n}\n\ninterface ProbeFunctions {\n\tfine(value: number): number;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, {}>();\nexport const functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const server = events.createServer({});\n"
+			},
+			"contains": [
+				"The networking member 'both' is declared both Raw and Serialized"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:236 conflicting markers > refuses a conflicting member that the handler only sends",
+			"files": {
+				"src/conflictingMarkers.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tboth: Networking.RawUnreliable<Networking.Serialized<(value: number) => void>>;\n}\n\ninterface ProbeFunctions {\n\tfine(value: number): number;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, {}>();\nexport const functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\n"
+			},
+			"contains": [
+				"declared both Raw and Serialized"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:253 conflicting markers > refuses a conflicting function member",
+			"files": {
+				"src/conflictingFunction.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeFunctions {\n\tboth: Networking.Raw<Networking.Serialized<(value: number) => number>>;\n}\n\nconst functions = Networking.createFunction<{}, ProbeFunctions>();\nexport const server = functions.createServer({});\n"
+			},
+			"contains": [
+				"The networking member 'both' is declared both Raw and Serialized"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:273 markers dropped before beta > names the marker that replaces SerializedReliable and RawReliable, not TypeScript's guess",
+			"files": {
+				"src/removedMarkers.ts": "import { Networking } from \"@flamework-experimental/networking\";\nimport { Networking as Net } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tsaved: Networking.SerializedReliable<(value: number) => void>;\n\tchat: Net.RawReliable<(text: string) => void>;\n}\n\nexport const events = Networking.createEvent<ProbeServerEvents, {}>();\n"
+			},
+			"contains": [
+				"'Networking.SerializedReliable' was removed before beta. It was the same type as 'Networking.Serialized', which replaces it.",
+				"Write 'Networking.Serialized<...>'. 'SerializedUnreliable' would make the event unreliable.",
+				"'Net.RawReliable' was removed before beta. It was the same type as 'Net.Raw', which replaces it."
+			],
+			"excludes": [
+				"Did you mean"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:298 markers dropped before beta > leaves TypeScript's own message for a namespace of the user's that looks like networking's",
+			"files": {
+				"src/removedMarkersLookalike.ts": "export namespace Lookalike {\n\texport type Serialized<T> = T;\n\texport type RawUnreliable<T> = T;\n}\n\nexport type Saved = Lookalike.SerializedReliable<(value: number) => void>;\n"
+			},
+			"contains": [
+				"SerializedReliable"
+			],
+			"excludes": [
+				"was removed before beta"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:467 targets that may be several members > refuses Serialized with plain members when the switch is off, and Raw with either",
+			"files": {
+				"src/mixCallback.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn serverFunctions.serializedFn;\n\t\tcase \"b\":\n\t\t\treturn serverFunctions.plainFn;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).setCallback((player, v) => v + 1);\n}\n",
+				"src/mixEventByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn client.serializedPing;\n\t\tcase \"b\":\n\t\t\treturn client.plainPing;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).fire(1);\n}\n",
+				"src/mixEventEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.serializedPing : client.plainPing).fire(1);\n}\n",
+				"src/mixFunction.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn clientFunctions.serializedFn;\n\t\tcase \"b\":\n\t\t\treturn clientFunctions.plainFn;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).invoke(1);\n}\n",
+				"src/mixRawCallback.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? serverFunctions.serializedFn : serverFunctions.rawFn).setCallback((player, v) => v + 1);\n}\n",
+				"src/mixRawEvent.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.serializedPing : client.rawPing).fire(1);\n}\n",
+				"src/mixRawFunction.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? clientFunctions.serializedFn : clientFunctions.rawFn).invoke(1);\n}\n",
+				"src/mixServerEvent.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? server.serializedPong : server.plainPong).broadcast(1);\n}\n"
+			},
+			"env": {
+				"FLAMEWORK_FIXTURE_SERIALIZATION": "false"
+			},
+			"contains": [
+				"Serialized members are packed into a buffer; plain members are sent as they are, as networking.serialization is off",
+				"Serialized members are packed into a buffer; Raw members are sent as they are",
+				"One call site packs for all of them or for none, so some would drop what it sends",
+				"so the callers of some would reject what the callback returns",
+				"Make the call where the member's own type is known"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:508 targets that may be several members > refuses Raw with plain or Serialized members when the switch is on, and lists that differ",
+			"files": {
+				"src/mixLists.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.plainPing : client.wide).fire(1);\n}\n",
+				"src/mixPlainRaw.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.plainPing : client.rawPing).fire(1);\n}\n",
+				"src/mixPlainRawCallback.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? serverFunctions.plainFn : serverFunctions.rawFn).setCallback((player, v) => v + 1);\n}\n",
+				"src/mixResults.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? serverFunctions.serializedFn : serverFunctions.serializedText).setCallback((player, v) => v as never);\n}\n",
+				"src/mixSerializedRaw.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface ProbeServerEvents {\n\tplainPing(value: number): void;\n\tserializedPing: Networking.Serialized<(value: number) => void>;\n\trawPing: Networking.Raw<(value: number) => void>;\n\twide(value: number | string): void;\n}\n\ninterface ProbeClientEvents {\n\tplainPong(value: number): void;\n\tserializedPong: Networking.Serialized<(value: number) => void>;\n}\n\ninterface ProbeFunctions {\n\tplainFn(v: number): number;\n\tserializedFn: Networking.Serialized<(v: number) => number>;\n\tserializedText: Networking.Serialized<(v: number) => string>;\n\trawFn: Networking.Raw<(v: number) => number>;\n}\n\nconst events = Networking.createEvent<ProbeServerEvents, ProbeClientEvents>();\nconst functions = Networking.createFunction<ProbeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn client.serializedPing;\n\t\tcase \"b\":\n\t\t\treturn client.rawPing;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).fire(1);\n}\n"
+			},
+			"contains": [
+				"plain members are packed, as networking.serialization is on; Raw members are sent as they are",
+				"Serialized members are packed into a buffer; Raw members are sent as they are",
+				"their argument lists are not laid out and checked alike ('ProbeServerEvents.plainPing(value: number): void' and 'ProbeServerEvents.wide(value: number | string): void')",
+				"their results are not laid out and checked alike ('ProbeFunctions.serializedFn(v: number): number' and 'ProbeFunctions.serializedText(v: number): string')"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:644 targets whose members lay their values out differently > refuses members whose argument lists or results are not laid out and checked alike, naming them",
+			"files": {
+				"src/layoutCallback.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface LayoutServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst: Networking.Serialized<(value: number | string) => void>;\n\ttextFirstToo: Networking.Serialized<(value: string | number) => void>;\n}\n\ninterface LayoutFunctions {\n\ttextFirst(): string | number;\n\tnumberFirst: Networking.Serialized<() => number | string>;\n\tmeters(): number & { readonly unit?: \"meters\" };\n\tseconds: Networking.Serialized<() => number & { readonly unit?: \"seconds\" }>;\n}\n\nconst events = Networking.createEvent<LayoutServerEvents, {}>();\nconst functions = Networking.createFunction<LayoutFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? serverFunctions.textFirst : serverFunctions.numberFirst).setCallback(() => 1);\n}\n",
+				"src/layoutEvent.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface LayoutServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst: Networking.Serialized<(value: number | string) => void>;\n\ttextFirstToo: Networking.Serialized<(value: string | number) => void>;\n}\n\ninterface LayoutFunctions {\n\ttextFirst(): string | number;\n\tnumberFirst: Networking.Serialized<() => number | string>;\n\tmeters(): number & { readonly unit?: \"meters\" };\n\tseconds: Networking.Serialized<() => number & { readonly unit?: \"seconds\" }>;\n}\n\nconst events = Networking.createEvent<LayoutServerEvents, {}>();\nconst functions = Networking.createFunction<LayoutFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.textFirst : client.numberFirst).fire(\"x\");\n}\n"
+			},
+			"contains": [
+				"their argument lists are not laid out and checked alike ('LayoutServerEvents.numberFirst(value: number | string): void' and 'LayoutServerEvents.textFirst(value: string | number): void')",
+				"their results are not laid out and checked alike ('LayoutFunctions.numberFirst(): number | string' and 'LayoutFunctions.textFirst(): string | number')",
+				"so the receiver of the other would read what it sends wrong",
+				"so the callers of the other would read them wrong"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:681 targets whose members lay their values out differently > tells a field keyed by Infinity from one keyed by -Infinity",
+			"files": {
+				"src/infinityKeys.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface InfinityFunctions {\n\tpositive: Networking.Serialized<() => { 1e999: number }>;\n\tnegative: Networking.Serialized<() => { [-1e999]: number }>;\n}\n\nconst functions = Networking.createFunction<InfinityFunctions, {}>();\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? serverFunctions.positive : serverFunctions.negative).setCallback(() => 5 as never);\n}\n"
+			},
+			"contains": [
+				"their results are not laid out and checked alike ('InfinityFunctions.negative(): { [-1e999]: number }' and 'InfinityFunctions.positive(): { 1e999: number }')"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:906 targets whose members only their names tell apart > refuses a conditional, a helper or a variable over members laid out differently",
+			"files": {
+				"src/mergeAcrossByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn client.fieldsPQ;\n\t\tcase \"b\":\n\t\t\treturn client.items.fieldsQP;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).fire({ p: 1, q: \"x\" });\n}\n",
+				"src/mergeAcrossEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.fieldsPQ : client.items.fieldsQP).fire({ p: 1, q: \"x\" });\n}\n",
+				"src/mergeAcrossVariable.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\tlet target: typeof client.fieldsPQ | typeof client.items.fieldsQP = client.fieldsPQ;\n\tif (flag) target = client.items.fieldsQP;\n\treturn target.fire({ p: 1, q: \"x\" });\n}\n",
+				"src/mergeCallbackByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn serverFunctions.resultTextFirst;\n\t\tcase \"b\":\n\t\t\treturn serverFunctions.resultNumberFirst;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).setCallback(() => 1);\n}\n",
+				"src/mergeCallbackEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? serverFunctions.resultTextFirst : serverFunctions.resultNumberFirst).setCallback(() => 1);\n}\n",
+				"src/mergeCallbackVariable.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\tlet target: typeof serverFunctions.resultTextFirst | typeof serverFunctions.resultNumberFirst = serverFunctions.resultTextFirst;\n\tif (flag) target = serverFunctions.resultNumberFirst;\n\treturn target.setCallback(() => 1);\n}\n",
+				"src/mergeFieldsByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn client.fieldsPQ;\n\t\tcase \"b\":\n\t\t\treturn client.fieldsQP;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).fire({ p: 1, q: \"x\" });\n}\n",
+				"src/mergeFieldsEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.fieldsPQ : client.fieldsQP).fire({ p: 1, q: \"x\" });\n}\n",
+				"src/mergeFieldsVariable.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\tlet target: typeof client.fieldsPQ | typeof client.fieldsQP = client.fieldsPQ;\n\tif (flag) target = client.fieldsQP;\n\treturn target.fire({ p: 1, q: \"x\" });\n}\n",
+				"src/mergeInvokeByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn clientFunctions.textFirst;\n\t\tcase \"b\":\n\t\t\treturn clientFunctions.numberFirst;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).invoke(1);\n}\n",
+				"src/mergeInvokeEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? clientFunctions.textFirst : clientFunctions.numberFirst).invoke(1);\n}\n",
+				"src/mergeInvokeVariable.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\tlet target: typeof clientFunctions.textFirst | typeof clientFunctions.numberFirst = clientFunctions.textFirst;\n\tif (flag) target = clientFunctions.numberFirst;\n\treturn target.invoke(1);\n}\n",
+				"src/mergeNamespaceByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn client.items.textFirst;\n\t\tcase \"b\":\n\t\t\treturn client.items.numberFirst;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).fire(1);\n}\n",
+				"src/mergeNamespaceEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.items.textFirst : client.items.numberFirst).fire(1);\n}\n",
+				"src/mergeNamespaceVariable.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\tlet target: typeof client.items.textFirst | typeof client.items.numberFirst = client.items.textFirst;\n\tif (flag) target = client.items.numberFirst;\n\treturn target.fire(1);\n}\n",
+				"src/mergeServerByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn server.textFirst;\n\t\tcase \"b\":\n\t\t\treturn server.numberFirst;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).broadcast(1);\n}\n",
+				"src/mergeServerEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? server.textFirst : server.numberFirst).broadcast(1);\n}\n",
+				"src/mergeServerVariable.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\tlet target: typeof server.textFirst | typeof server.numberFirst = server.textFirst;\n\tif (flag) target = server.numberFirst;\n\treturn target.broadcast(1);\n}\n",
+				"src/mergeUnionByName.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nfunction member(name: \"a\" | \"b\") {\n\tswitch (name) {\n\t\tcase \"a\":\n\t\t\treturn client.textFirst;\n\t\tcase \"b\":\n\t\t\treturn client.numberFirst;\n\t}\n}\n\nexport function run(name: \"a\" | \"b\") {\n\treturn member(name).fire(1);\n}\n",
+				"src/mergeUnionEither.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\treturn (flag ? client.textFirst : client.numberFirst).fire(1);\n}\n",
+				"src/mergeUnionVariable.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface MergeServerEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n\tfieldsPQ(value: { p: number; q: string }): void;\n\tfieldsQP(value: { q: string; p: number }): void;\n\titems: {\n\t\ttextFirst(value: string | number): void;\n\t\tnumberFirst(value: number | string): void;\n\t\tfieldsQP(value: { q: string; p: number }): void;\n\t};\n}\n\ninterface MergeClientEvents {\n\ttextFirst(value: string | number): void;\n\tnumberFirst(value: number | string): void;\n\ttextFirstToo(value: string | number): void;\n}\n\ninterface MergeFunctions {\n\ttextFirst(value: string | number): number;\n\tnumberFirst(value: number | string): number;\n\ttextFirstToo(value: string | number): number;\n\tresultTextFirst(): string | number;\n\tresultNumberFirst(): number | string;\n\tresultTextFirstToo(): string | number;\n}\n\nconst events = Networking.createEvent<MergeServerEvents, MergeClientEvents>();\nconst functions = Networking.createFunction<MergeFunctions, {}>();\nexport const client = events.createClient({});\nexport const server = events.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const serverFunctions = functions.createServer({});\n\nexport function run(flag: boolean) {\n\tlet target: typeof client.textFirst | typeof client.numberFirst = client.textFirst;\n\tif (flag) target = client.numberFirst;\n\treturn target.fire(1);\n}\n"
+			},
+			"line": [
+				[
+					"src/mergeAcrossByName.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'member(name).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.fieldsPQ(value: { p: number; q: string }): void' and 'fieldsQP(value: { q: string; p: number }): void')."
+				],
+				[
+					"src/mergeAcrossEither.ts:",
+					" - error TS @flamework-experimental/transformer: The call '(flag ? client.fieldsPQ : client.items.fieldsQP).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.fieldsPQ(value: { p: number; q: string }): void' and 'fieldsQP(value: { q: string; p: number }): void')."
+				],
+				[
+					"src/mergeAcrossVariable.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'target.fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.fieldsPQ(value: { p: number; q: string }): void' and 'fieldsQP(value: { q: string; p: number }): void')."
+				],
+				[
+					"src/mergeCallbackByName.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'member(name).setCallback(...)' may reach networking members that are packed differently: their results are not laid out and checked alike ('MergeFunctions.resultNumberFirst(): number | string' and 'MergeFunctions.resultTextFirst(): string | number')."
+				],
+				[
+					"src/mergeCallbackEither.ts:",
+					" - error TS @flamework-experimental/transformer: The call '(flag ? serverFunctions.resultTextFirst : serverFunctions.resultNumberFirst).setCallback(...)' may reach networking members that are packed differently: their results are not laid out and checked alike ('MergeFunctions.resultNumberFirst(): number | string' and 'MergeFunctions.resultTextFirst(): string | number')."
+				],
+				[
+					"src/mergeCallbackVariable.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'target.setCallback(...)' may reach networking members that are packed differently: their results are not laid out and checked alike ('MergeFunctions.resultNumberFirst(): number | string' and 'MergeFunctions.resultTextFirst(): string | number')."
+				],
+				[
+					"src/mergeFieldsByName.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'member(name).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.fieldsPQ(value: { p: number; q: string }): void' and 'MergeServerEvents.fieldsQP(value: { q: string; p: number }): void')."
+				],
+				[
+					"src/mergeFieldsEither.ts:",
+					" - error TS @flamework-experimental/transformer: The call '(flag ? client.fieldsPQ : client.fieldsQP).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.fieldsPQ(value: { p: number; q: string }): void' and 'MergeServerEvents.fieldsQP(value: { q: string; p: number }): void')."
+				],
+				[
+					"src/mergeFieldsVariable.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'target.fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.fieldsPQ(value: { p: number; q: string }): void' and 'MergeServerEvents.fieldsQP(value: { q: string; p: number }): void')."
+				],
+				[
+					"src/mergeInvokeByName.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'member(name).invoke(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeFunctions.numberFirst(value: number | string): number' and 'MergeFunctions.textFirst(value: string | number): number')."
+				],
+				[
+					"src/mergeInvokeEither.ts:",
+					" - error TS @flamework-experimental/transformer: The call '(flag ? clientFunctions.textFirst : clientFunctions.numberFirst).invoke(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeFunctions.numberFirst(value: number | string): number' and 'MergeFunctions.textFirst(value: string | number): number')."
+				],
+				[
+					"src/mergeInvokeVariable.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'target.invoke(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeFunctions.numberFirst(value: number | string): number' and 'MergeFunctions.textFirst(value: string | number): number')."
+				],
+				[
+					"src/mergeNamespaceByName.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'member(name).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('numberFirst(value: number | string): void' and 'textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeNamespaceEither.ts:",
+					" - error TS @flamework-experimental/transformer: The call '(flag ? client.items.textFirst : client.items.numberFirst).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('numberFirst(value: number | string): void' and 'textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeNamespaceVariable.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'target.fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('numberFirst(value: number | string): void' and 'textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeServerByName.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'member(name).broadcast(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeClientEvents.numberFirst(value: number | string): void' and 'MergeClientEvents.textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeServerEither.ts:",
+					" - error TS @flamework-experimental/transformer: The call '(flag ? server.textFirst : server.numberFirst).broadcast(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeClientEvents.numberFirst(value: number | string): void' and 'MergeClientEvents.textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeServerVariable.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'target.broadcast(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeClientEvents.numberFirst(value: number | string): void' and 'MergeClientEvents.textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeUnionByName.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'member(name).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.numberFirst(value: number | string): void' and 'MergeServerEvents.textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeUnionEither.ts:",
+					" - error TS @flamework-experimental/transformer: The call '(flag ? client.textFirst : client.numberFirst).fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.numberFirst(value: number | string): void' and 'MergeServerEvents.textFirst(value: string | number): void')."
+				],
+				[
+					"src/mergeUnionVariable.ts:",
+					" - error TS @flamework-experimental/transformer: The call 'target.fire(...)' may reach networking members that are packed differently: their argument lists are not laid out and checked alike ('MergeServerEvents.numberFirst(value: number | string): void' and 'MergeServerEvents.textFirst(value: string | number): void')."
+				]
+			],
+			"excludes": [
+				"error TS1",
+				"error TS2",
+				"error TS3",
+				"error TS4",
+				"error TS5",
+				"error TS6",
+				"error TS7",
+				"error TS8",
+				"error TS9"
+			]
+		},
+		{
+			"name": "networkModes.test.ts:1213 names declared in both directions > a callback through a union checks the receiver's own result against the others",
+			"files": {
+				"src/bothRefused.ts": "import { Networking } from \"@flamework-experimental/networking\";\n\ninterface BothServerFunctions {\n\tboth(): string | number;\n\tcount(value: number): number;\n\tsame(): string | number;\n\tother(): number | string;\n\titems: { both(): string | number };\n}\n\ninterface BothClientFunctions {\n\tboth(): number | string;\n\tcount(value: number): string;\n\titems: { both(): number | string };\n}\n\ninterface BothServerEvents {\n\tboth(value: string | number): void;\n}\n\ninterface BothClientEvents {\n\tboth(value: number | string): void;\n}\n\nconst functions = Networking.createFunction<BothServerFunctions, BothClientFunctions>();\nconst events = Networking.createEvent<BothServerEvents, BothClientEvents>();\nexport const serverFunctions = functions.createServer({});\nexport const clientFunctions = functions.createClient({});\nexport const server = events.createServer({});\nexport const client = events.createClient({});\n\nexport function run(flag: boolean) {\n\t(flag ? serverFunctions.both : serverFunctions.other).setCallback(() => 1);\n}\n"
+			},
+			"contains": [
+				"The call '(flag ? serverFunctions.both : serverFunctions.other).setCallback(...)' may reach networking members that are packed differently: their results are not laid out and checked alike ('BothServerFunctions.both(): string | number' and 'BothServerFunctions.other(): number | string')."
+			]
+		},
+		{
+			"name": "projectConfig.test.ts:768 the tsconfig entry, through rbxtsc > an option on the entry fails the build and names the file to move it to",
+			"files": {
+				"tsconfig.entry-probe.json": "{\n\t\"compilerOptions\": {\n\t\t\"allowSyntheticDefaultImports\": true,\n\t\t\"jsx\": \"react\",\n\t\t\"jsxFactory\": \"Roact.createElement\",\n\t\t\"jsxFragmentFactory\": \"Roact.Fragment\",\n\t\t\"experimentalDecorators\": true,\n\t\t\"module\": \"preserve\",\n\t\t\"moduleResolution\": \"bundler\",\n\t\t\"noLib\": true,\n\t\t\"resolveJsonModule\": true,\n\t\t\"strict\": true,\n\t\t\"target\": \"ESNext\",\n\t\t\"stripInternal\": true,\n\t\t\"moduleDetection\": \"force\",\n\t\t\"incremental\": false,\n\t\t\"declaration\": false,\n\t\t\"typeRoots\": [\n\t\t\t\"./node_modules/@rbxts\",\n\t\t\t\"./node_modules/@flamework-experimental\"\n\t\t],\n\t\t\"types\": [\n\t\t\t\"types\",\n\t\t\t\"compiler-types\"\n\t\t],\n\t\t\"paths\": {\n\t\t\t\"@rbxts/t\": [\n\t\t\t\t\"./node_modules/@rbxts/t\"\n\t\t\t]\n\t\t},\n\t\t\"rootDir\": \"src\",\n\t\t\"outDir\": \"out\",\n\t\t\"plugins\": [\n\t\t\t{\n\t\t\t\t\"transform\": \"@flamework-experimental/transformer\",\n\t\t\t\t\"obfuscation\": true\n\t\t\t}\n\t\t]\n\t}\n}\n"
+			},
+			"tsconfig": "tsconfig.entry-probe.json",
+			"contains": [
+				"Move 'obfuscation' to the \"transformer\" section of <ROOT>\\flamework.config.json."
+			]
+		},
+		{
+			"name": "projectConfig.test.ts:785 the tsconfig entry, through rbxtsc > a config file that does not parse or validate fails the build without a stack",
+			"files": {
+				"probe-config/flamework.config.json": "{ \"transformer\": { \"hashPrefix\": 1 } }",
+				"tsconfig.entry-probe.json": "{\n\t\"compilerOptions\": {\n\t\t\"allowSyntheticDefaultImports\": true,\n\t\t\"jsx\": \"react\",\n\t\t\"jsxFactory\": \"Roact.createElement\",\n\t\t\"jsxFragmentFactory\": \"Roact.Fragment\",\n\t\t\"experimentalDecorators\": true,\n\t\t\"module\": \"preserve\",\n\t\t\"moduleResolution\": \"bundler\",\n\t\t\"noLib\": true,\n\t\t\"resolveJsonModule\": true,\n\t\t\"strict\": true,\n\t\t\"target\": \"ESNext\",\n\t\t\"stripInternal\": true,\n\t\t\"moduleDetection\": \"force\",\n\t\t\"incremental\": false,\n\t\t\"declaration\": false,\n\t\t\"typeRoots\": [\n\t\t\t\"./node_modules/@rbxts\",\n\t\t\t\"./node_modules/@flamework-experimental\"\n\t\t],\n\t\t\"types\": [\n\t\t\t\"types\",\n\t\t\t\"compiler-types\"\n\t\t],\n\t\t\"paths\": {\n\t\t\t\"@rbxts/t\": [\n\t\t\t\t\"./node_modules/@rbxts/t\"\n\t\t\t]\n\t\t},\n\t\t\"rootDir\": \"src\",\n\t\t\"outDir\": \"out\",\n\t\t\"plugins\": [\n\t\t\t{\n\t\t\t\t\"transform\": \"@flamework-experimental/transformer\",\n\t\t\t\t\"configFile\": \"probe-config/flamework.config.json\"\n\t\t\t}\n\t\t]\n\t}\n}\n"
+			},
+			"tsconfig": "tsconfig.entry-probe.json",
+			"contains": [
+				"Invalid <ROOT>\\probe-config\\flamework.config.json:",
+				"  /transformer/hashPrefix must be string"
+			]
+		},
+		{
+			"name": "projectConfig.test.ts:785 the tsconfig entry, through rbxtsc > a config file that does not parse or validate fails the build without a stack",
+			"files": {
+				"probe-config/flamework.config.json": "{ \"transformer\": { ",
+				"tsconfig.entry-probe.json": "{\n\t\"compilerOptions\": {\n\t\t\"allowSyntheticDefaultImports\": true,\n\t\t\"jsx\": \"react\",\n\t\t\"jsxFactory\": \"Roact.createElement\",\n\t\t\"jsxFragmentFactory\": \"Roact.Fragment\",\n\t\t\"experimentalDecorators\": true,\n\t\t\"module\": \"preserve\",\n\t\t\"moduleResolution\": \"bundler\",\n\t\t\"noLib\": true,\n\t\t\"resolveJsonModule\": true,\n\t\t\"strict\": true,\n\t\t\"target\": \"ESNext\",\n\t\t\"stripInternal\": true,\n\t\t\"moduleDetection\": \"force\",\n\t\t\"incremental\": false,\n\t\t\"declaration\": false,\n\t\t\"typeRoots\": [\n\t\t\t\"./node_modules/@rbxts\",\n\t\t\t\"./node_modules/@flamework-experimental\"\n\t\t],\n\t\t\"types\": [\n\t\t\t\"types\",\n\t\t\t\"compiler-types\"\n\t\t],\n\t\t\"paths\": {\n\t\t\t\"@rbxts/t\": [\n\t\t\t\t\"./node_modules/@rbxts/t\"\n\t\t\t]\n\t\t},\n\t\t\"rootDir\": \"src\",\n\t\t\"outDir\": \"out\",\n\t\t\"plugins\": [\n\t\t\t{\n\t\t\t\t\"transform\": \"@flamework-experimental/transformer\",\n\t\t\t\t\"configFile\": \"probe-config/flamework.config.json\"\n\t\t\t}\n\t\t]\n\t}\n}\n"
+			},
+			"tsconfig": "tsconfig.entry-probe.json",
+			"contains": [
+				"Failed to parse <ROOT>\\probe-config\\flamework.config.json: '}' expected."
+			]
+		},
+		{
+			"name": "projectConfig.test.ts:785 the tsconfig entry, through rbxtsc > a config file that does not parse or validate fails the build without a stack",
+			"files": {
+				"probe-config/flamework.config.json": "{ \"transformer\": { \"obfuscation\": \"${FW_PROBE_UNSET}\" } }",
+				"tsconfig.entry-probe.json": "{\n\t\"compilerOptions\": {\n\t\t\"allowSyntheticDefaultImports\": true,\n\t\t\"jsx\": \"react\",\n\t\t\"jsxFactory\": \"Roact.createElement\",\n\t\t\"jsxFragmentFactory\": \"Roact.Fragment\",\n\t\t\"experimentalDecorators\": true,\n\t\t\"module\": \"preserve\",\n\t\t\"moduleResolution\": \"bundler\",\n\t\t\"noLib\": true,\n\t\t\"resolveJsonModule\": true,\n\t\t\"strict\": true,\n\t\t\"target\": \"ESNext\",\n\t\t\"stripInternal\": true,\n\t\t\"moduleDetection\": \"force\",\n\t\t\"incremental\": false,\n\t\t\"declaration\": false,\n\t\t\"typeRoots\": [\n\t\t\t\"./node_modules/@rbxts\",\n\t\t\t\"./node_modules/@flamework-experimental\"\n\t\t],\n\t\t\"types\": [\n\t\t\t\"types\",\n\t\t\t\"compiler-types\"\n\t\t],\n\t\t\"paths\": {\n\t\t\t\"@rbxts/t\": [\n\t\t\t\t\"./node_modules/@rbxts/t\"\n\t\t\t]\n\t\t},\n\t\t\"rootDir\": \"src\",\n\t\t\"outDir\": \"out\",\n\t\t\"plugins\": [\n\t\t\t{\n\t\t\t\t\"transform\": \"@flamework-experimental/transformer\",\n\t\t\t\t\"configFile\": \"probe-config/flamework.config.json\"\n\t\t\t}\n\t\t]\n\t}\n}\n"
+			},
+			"tsconfig": "tsconfig.entry-probe.json",
+			"contains": [
+				"uses $FW_PROBE_UNSET, which is not set in the environment, .env or .env.local and has no fallback."
+			]
+		},
+		{
+			"name": "projectConfig.test.ts:785 the tsconfig entry, through rbxtsc > a config file that does not parse or validate fails the build without a stack",
+			"files": {
+				"probe-config/flamework.config.json": "{ \"transformer\": { \"hashPrefix\": \"$probe\" } }",
+				"tsconfig.entry-probe.json": "{\n\t\"compilerOptions\": {\n\t\t\"allowSyntheticDefaultImports\": true,\n\t\t\"jsx\": \"react\",\n\t\t\"jsxFactory\": \"Roact.createElement\",\n\t\t\"jsxFragmentFactory\": \"Roact.Fragment\",\n\t\t\"experimentalDecorators\": true,\n\t\t\"module\": \"preserve\",\n\t\t\"moduleResolution\": \"bundler\",\n\t\t\"noLib\": true,\n\t\t\"resolveJsonModule\": true,\n\t\t\"strict\": true,\n\t\t\"target\": \"ESNext\",\n\t\t\"stripInternal\": true,\n\t\t\"moduleDetection\": \"force\",\n\t\t\"incremental\": false,\n\t\t\"declaration\": false,\n\t\t\"typeRoots\": [\n\t\t\t\"./node_modules/@rbxts\",\n\t\t\t\"./node_modules/@flamework-experimental\"\n\t\t],\n\t\t\"types\": [\n\t\t\t\"types\",\n\t\t\t\"compiler-types\"\n\t\t],\n\t\t\"paths\": {\n\t\t\t\"@rbxts/t\": [\n\t\t\t\t\"./node_modules/@rbxts/t\"\n\t\t\t]\n\t\t},\n\t\t\"rootDir\": \"src\",\n\t\t\"outDir\": \"out\",\n\t\t\"plugins\": [\n\t\t\t{\n\t\t\t\t\"transform\": \"@flamework-experimental/transformer\",\n\t\t\t\t\"configFile\": \"probe-config/flamework.config.json\"\n\t\t\t}\n\t\t]\n\t}\n}\n"
+			},
+			"tsconfig": "tsconfig.entry-probe.json",
+			"contains": [
+				"The hashPrefix $ is used internally by Flamework"
+			]
+		},
+		{
+			"name": "regressions.test.ts:207 dependencies on components > refuses Dependency<T>() on a component",
+			"files": {
+				"src/dependencyOnComponent.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\n\n@Component({})\nexport class QuestsUI extends BaseComponent<{}, Instance> {}\n\nimport { Dependency } from \"@flamework-experimental/core\";\n\nexport const ui = Dependency<QuestsUI>();\n"
+			},
+			"contains": [
+				"'QuestsUI' is a component (@Component), not a provider",
+				"Make 'QuestsUI' a @Provider()",
+				"getComponent<QuestsUI>(instance)"
+			]
+		},
+		{
+			"name": "regressions.test.ts:223 dependencies on components > refuses module.resolveDependency<T>() on a component",
+			"files": {
+				"src/resolveOnComponent.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\n\n@Component({})\nexport class QuestsUI extends BaseComponent<{}, Instance> {}\n\nimport { Flamework } from \"@flamework-experimental/core\";\n\nexport const ui = Flamework.createModule().ignite().resolveDependency<QuestsUI>();\n"
+			},
+			"contains": [
+				"'QuestsUI' is a component (@Component), not a provider"
+			]
+		},
+		{
+			"name": "regressions.test.ts:240 dependencies on components > refuses a provider's constructor taking a component",
+			"files": {
+				"src/providerTakesComponent.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\n\n@Component({})\nexport class QuestsUI extends BaseComponent<{}, Instance> {}\n\nimport { Provider } from \"@flamework-experimental/core\";\n\n@Provider()\nexport class QuestHandler {\n\tconstructor(private readonly ui: QuestsUI) {}\n}\n"
+			},
+			"contains": [
+				"'QuestHandler' takes 'QuestsUI' in its constructor",
+				"take Components"
+			]
+		},
+		{
+			"name": "regressions.test.ts:776 component links > rejects an optional child naming a component",
+			"files": {
+				"src/optionalComponentChild.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\n\n@Component({ tag: \"FixtureOptionalCore\" })\nexport class CoreComponent extends BaseComponent<{}, BasePart> {}\n\n@Component({ tag: \"FixtureOptionalCannon\" })\nexport class CannonComponent extends BaseComponent<{}, Model & { Core?: CoreComponent }> {}\n"
+			},
+			"contains": [
+				"Child 'Core' of the instance tree of 'CannonComponent' is optional",
+				"optional link attribute"
+			]
+		},
+		{
+			"name": "regressions.test.ts:838 instance shapes > rejects an optional child of the instance tree",
+			"files": {
+				"src/optionalChild.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\n\ninterface Character extends Model {\n\tHead?: BasePart;\n\tHumanoidRootPart: BasePart;\n}\n\n@Component({ tag: \"FixtureOptionalChild\" })\nexport class CharacterComponent extends BaseComponent<{}, Character> {}\n"
+			},
+			"contains": [
+				"Child 'Head' of the instance tree of 'CharacterComponent' is optional",
+				"Roblox raises when a child that does not exist is indexed"
+			]
+		},
+		{
+			"name": "regressions.test.ts:853 instance shapes > rejects an optional child deeper in the instance tree",
+			"files": {
+				"src/optionalGrandchild.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\n\n@Component({ tag: \"FixtureOptionalGrandchild\" })\nexport class RiggedComponent extends BaseComponent<{}, Model & { Torso: BasePart & { Neck?: Motor6D } }> {}\n"
+			},
+			"contains": [
+				"Child 'Torso.Neck' of the instance tree of 'RiggedComponent' is optional"
+			]
+		},
+		{
+			"name": "regressions.test.ts:868 instance shapes > rejects a component that is not a direct child of the instance tree",
+			"files": {
+				"src/nestedLink.ts": "import { BaseComponent, Component } from \"@flamework-experimental/components\";\nimport { HandlerComponent } from \"./components\";\n\n@Component({ tag: \"FixtureNested\" })\nexport class NestedComponent extends BaseComponent<{}, Model & { Core: Folder & { Handler: HandlerComponent } }> {}\n"
+			},
+			"contains": [
+				"which is not a direct child of this component"
+			]
+		},
+		{
+			"name": "regressions.test.ts:1056 a flamework.build that cannot be used > stops an incremental build, which reuses it, naming it and the file to delete",
+			"files": {},
+			"tsconfig": "tsconfig.buildinfo-probe.json",
+			"contains": [
+				"This incremental build reads it to keep the ids of the files it does not recompile. Delete buildinfo-probe.tsbuildinfo and build again: a full build does not read flamework.build, and writes a new one."
+			],
+			"line": [
+				[
+					"Flamework cannot use flamework.build: it is not valid JSON (",
+					")."
+				]
+			],
+			"covered": "the project flamework.build refused on an incremental build: build_info_setup.rs an_unusable_own_build_info_is_refused_with_the_ts_texts, incremental.rs the_build_info_changed_by_hand_*"
+		},
+		{
+			"name": "regressions.test.ts:1056 a flamework.build that cannot be used > stops an incremental build, which reuses it, naming it and the file to delete",
+			"files": {},
+			"tsconfig": "tsconfig.buildinfo-probe.json",
+			"contains": [
+				"Flamework cannot use flamework.build: it is empty.",
+				"This incremental build reads it to keep the ids of the files it does not recompile. Delete buildinfo-probe.tsbuildinfo and build again: a full build does not read flamework.build, and writes a new one."
+			],
+			"covered": "the project flamework.build refused on an incremental build: build_info_setup.rs an_unusable_own_build_info_is_refused_with_the_ts_texts, incremental.rs the_build_info_changed_by_hand_*"
+		},
+		{
+			"name": "regressions.test.ts:1056 a flamework.build that cannot be used > stops an incremental build, which reuses it, naming it and the file to delete",
+			"files": {},
+			"tsconfig": "tsconfig.buildinfo-probe.json",
+			"contains": [
+				"Flamework cannot use flamework.build: it does not have the shape Flamework writes (/ must have required property 'flameworkVersion').",
+				"This incremental build reads it to keep the ids of the files it does not recompile. Delete buildinfo-probe.tsbuildinfo and build again: a full build does not read flamework.build, and writes a new one."
+			],
+			"covered": "the project flamework.build refused on an incremental build: build_info_setup.rs an_unusable_own_build_info_is_refused_with_the_ts_texts, incremental.rs the_build_info_changed_by_hand_*"
+		},
+		{
+			"name": "regressions.test.ts:1056 a flamework.build that cannot be used > stops an incremental build, which reuses it, naming it and the file to delete",
+			"files": {},
+			"tsconfig": "tsconfig.buildinfo-probe.json",
+			"contains": [
+				"Project was compiled on different version of Flamework.",
+				"Delete buildinfo-probe.tsbuildinfo and build again",
+				"Previous Flamework Version: 2.0.0-alpha.1"
+			],
+			"covered": "the project flamework.build refused on an incremental build: build_info_setup.rs an_unusable_own_build_info_is_refused_with_the_ts_texts, incremental.rs the_build_info_changed_by_hand_*"
+		},
+		{
+			"name": "regressions.test.ts:1103 a flamework.build that cannot be used > stops a build that reads a package's, naming the package",
+			"files": {
+				"src/buildInfoPackage/flamework.build": "{ \"version\": 1",
+				"src/buildInfoPackage/package.json": "{ \"name\": \"@probe/package\", \"version\": \"1.0.0\" }",
+				"src/buildInfoPackage/probe.ts": "export const value = 1;\n"
+			},
+			"contains": [
+				"It came with the package @probe/package, which wrote it when it was built, and this build reads it for the ids of that package's classes. Reinstall the package, or build it again if it is your own."
+			],
+			"line": [
+				[
+					"Flamework cannot use src/buildInfoPackage/flamework.build: it is not valid JSON (",
+					")."
+				]
+			]
+		},
+		{
+			"name": "regressions.test.ts:1306 names renamed or removed before beta > names the replacement of onPostIgnite, the ancestor lists and ComponentStreamingMode.Default",
+			"files": {
+				"src/renamedBeforeBeta.ts": "import { Flamework } from \"@flamework-experimental/core\";\nimport { BaseComponent, Component, ComponentPlugin, ComponentStreamingMode } from \"@flamework-experimental/components\";\n\nexport const plugin = Flamework.createPlugin(\"Renamed\", (target) => {\n\ttarget.onPostIgnite(() => {});\n});\n\n// TypeScript reports one unknown key per object literal, so each list gets a decorator of its own.\n@Component({ tag: \"Renamed\", ancestorWhitelist: [game] })\nexport class Renamed extends BaseComponent {}\n\n@Component({ tag: \"RenamedBlocked\", ancestorBlacklist: [] })\nexport class RenamedBlocked extends BaseComponent {}\n\nexport const plugin2 = ComponentPlugin.createPlugin().build();\nexport const mode = ComponentStreamingMode.Default;\nexport type Mode = ComponentStreamingMode.Default;\n"
+			},
+			"contains": [
+				"'target.onPostIgnite' was renamed 'target.onConstructed' before beta.",
+				"'ancestorWhitelist' was renamed 'ancestorAllowList' before beta.",
+				"'ancestorBlacklist' was renamed 'ancestorBlockList' before beta.",
+				"'ComponentStreamingMode.Default' was removed before beta. It stood for 'ComponentStreamingMode.Contextual', which replaces it.",
+				"Write 'onConstructed'.",
+				"'ComponentPlugin.createPlugin' was renamed 'ComponentPlugin.builder' before beta."
+			]
+		},
+		{
+			"name": "regressions.test.ts:1333 names renamed or removed before beta > leaves TypeScript's own message for a name of the user's",
+			"files": {
+				"src/renamedLookalike.ts": "interface Mine {\n\tonConstructed(): void;\n\tancestorAllowList?: number;\n}\n\ndeclare const mine: Mine;\nmine.onPostIgnite();\nexport const literal: Mine = { onConstructed() {}, ancestorWhitelist: 1 };\n"
+			},
+			"contains": [
+				"onPostIgnite"
+			],
+			"excludes": [
+				"before beta"
+			]
+		},
+		{
+			"name": "serialization.test.ts:684 a versioned serializer > refuses a version it cannot read when the project builds, and options it cannot read",
+			"files": {
+				"src/optionsComputedKey.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\ndeclare const key: \"version\" | \"other\";\nexport const s = Flamework.createSerializer<Serialization.u8>({ version: 1, [key]: 2 });\n",
+				"src/optionsVariable.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\nconst options = { version: 1 };\nexport const s = Flamework.createSerializer<Serialization.u8>(options);\n",
+				"src/versionFraction.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<Serialization.u8>({ version: 1.5 });\n",
+				"src/versionNegative.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<Serialization.u8>({ version: -1 });\n",
+				"src/versionTooLarge.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\nexport const s = Flamework.createSerializer<Serialization.u8>({ version: 256 });\n",
+				"src/versionVariable.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\nlet current = 3;\nexport const s = Flamework.createSerializer<Serialization.u8>({ version: current });\n"
+			},
+			"contains": [
+				"Flamework writes a serializer's version into the code it generates, so it has to be known when the project builds, and the type of this one is 'number'.",
+				"Write the version as a number literal (`{ version: 3 }`), or as a `const` or an enum member whose type is that number.",
+				"A serializer's version is written as one byte: a whole number from 0 to 255, not 256.",
+				"A serializer's version is written as one byte: a whole number from 0 to 255, not 1.5.",
+				"A serializer's version is written as one byte: a whole number from 0 to 255, not -1.",
+				"Flamework reads a serializer's options when the project builds, so they have to be written here as an object literal, such as `{ version: 1 }`.",
+				"Flamework reads a serializer's options when the project builds, and cannot tell which option this key names: its type is '\"other\" | \"version\"'."
+			],
+			"note": "TS5 prints the key's type '\"version\" | \"other\"'; TypeScript 7's union order is accepted (DESIGN §10.4)"
+		},
+		{
+			"name": "serialization.test.ts:1015 wire order is a function of the types alone > refuses a union whose members only TypeScript's type ids would put in an order",
+			"files": {
+				"src/sameNameA.ts": "export interface Same { a: number }\n",
+				"src/sameNameB.ts": "export interface Same { b: string }\n",
+				"src/sameNameUnion.ts": "import { Flamework } from \"@flamework-experimental/core\";\nimport type { Same as SameA } from \"./sameNameA\";\nimport type { Same as SameB } from \"./sameNameB\";\ninterface Box<T> { value: T }\nexport const tied = Flamework.createSerializer<Box<SameA | SameB>>();\n"
+			},
+			"contains": [
+				"has two members, 'Same' and 'Same', that nothing but TypeScript's internal type ids would put in an order",
+				"Declare an alias for the union"
+			]
+		},
+		{
+			"name": "transformerOrder.test.ts:172 a transformer listed before Flamework's > rewriting everything in every statement: an error at a rewritten call names where it is written",
+			"files": {},
+			"tsconfig": "tsconfig.rewrite-probe.json",
+			"contains": [
+				"src/rewriteFirstError.ts:7:31 - error TS @flamework-experimental/transformer: 'RewriteFirstQuestsUI' is a component (@Component), not a provider"
+			],
+			"excludes": [
+				"Flamework failure",
+				"TypeError"
+			],
+			"covered": "dropped (DESIGN 10.3): a TS transformer listed ahead of Flamework (transformerOrder); rbxts-rs plugins see only original nodes"
+		},
+		{
+			"name": "versionCheck.test.ts:58 Flamework's packages at another version > refuses one built by another version, naming it, both versions and the fix",
+			"files": {
+				"src/versionProbe/flamework.build": "{\"version\":1,\"flameworkVersion\":\"2.0.0-alpha.1\",\"identifierPrefix\":\"$probe\",\"identifiers\":{}}",
+				"src/versionProbe/package.json": "{\"name\":\"@flamework-experimental/probe\",\"version\":\"2.0.0-alpha.1\"}",
+				"src/versionProbe/probe.ts": "export const value = 1;\n"
+			},
+			"contains": [
+				"Flamework's packages are not all the same version: @flamework-experimental/transformer is 2.0.0-beta.0, and this package was built by another version.",
+				"  @flamework-experimental/probe 2.0.0-alpha.1 (src/versionProbe/flamework.build)",
+				"Install the same version of every @flamework-experimental package: update it to 2.0.0-beta.0, or install @flamework-experimental/transformer@2.0.0-alpha.1 instead, then build again."
+			]
+		},
+		{
+			"name": "widthChecks.test.ts:233 mixing widths > refuses a type that names two different widths, naming it",
+			"files": {
+				"src/twoWidthsBuffer.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\ntype TwoBuffers = Serialization.buffer16 & Serialization.Implicit.buffer32;\nexport const e = Flamework.createSerializer<TwoBuffers>();\n",
+				"src/twoWidthsImplicit.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\ntype TwoImplicit = Serialization.Implicit.u8 & Serialization.Implicit.u16;\nexport const b = Flamework.createSerializer<{ id: TwoImplicit }>();\n",
+				"src/twoWidthsNever.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\nexport const n = Flamework.createSerializer<Serialization.u8 & Serialization.u16>();\n",
+				"src/twoWidthsOwn.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\ntype OwnAndImplicit = number & { readonly __brand?: \"u16\" } & Serialization.Implicit.u8;\nexport const c = Flamework.createSerializer<OwnAndImplicit>();\n",
+				"src/twoWidthsStrict.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\ntype StrictAndImplicit = Serialization.u16 & Serialization.Implicit.u8;\nexport const a = Flamework.createSerializer<StrictAndImplicit>();\n",
+				"src/twoWidthsString.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\ntype TwoStrings = Serialization.Implicit.string8 & Serialization.string16;\nexport const d = Flamework.createSerializer<TwoStrings>();\n",
+				"src/twoWidthsTwice.ts": "import { Flamework, Serialization } from \"@flamework-experimental/core\";\nexport const p = Flamework.createSerializer<{ p: Serialization.Implicit.u8 & Serialization.Implicit.u16 }>();\nexport const q = Flamework.createSerializer<{ q: string; r: Serialization.Implicit.i8 & Serialization.Implicit.u32 }>();\n"
+			},
+			"contains": [
+				"Flamework cannot serialize this type: 'StrictAndImplicit' names two widths, u16 and u8; a value is written at one width, so keep one of them.",
+				"'TwoImplicit' names two widths, u8 and u16",
+				"Reached through: { id: TwoImplicit; } > TwoImplicit",
+				"'OwnAndImplicit' names two widths, u16 and u8",
+				"'TwoStrings' names two widths, string8 and string16",
+				"'TwoBuffers' names two widths, buffer16 and buffer32",
+				"'Serialization.u8 & Serialization.u16' names two widths, u8 and u16",
+				"'Serialization.Implicit.u8 & Serialization.Implicit.u16' names two widths, u8 and u16",
+				"'Serialization.Implicit.i8 & Serialization.Implicit.u32' names two widths, i8 and u32"
+			],
+			"line": [
+				[
+					"Reached through: { q: string; r: ",
+					" }; } > Serialization.Implicit.i8 & Serialization.Implicit.u32"
+				]
+			],
+			"excludes": [
+				"'never'"
+			],
+			"not_line": [
+				[
+					"Reached through: ",
+					"p:",
+					"> Serialization.Implicit.i8 & Serialization.Implicit.u32"
+				]
+			]
+		}
+	]
+}

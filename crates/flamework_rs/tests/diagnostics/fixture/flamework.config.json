@@ -1,0 +1,24 @@
+{
+	"transformer": {
+		"hashPrefix": "fw",
+		"obfuscation": "${FLAMEWORK_FIXTURE_OBFUSCATE:-false}",
+		"idGenerationMode": "${FLAMEWORK_FIXTURE_IDMODE:-full}",
+		"optimizations": { "guardGenerationDedupLimit": "${FLAMEWORK_FIXTURE_DEDUP:-3}" },
+		// The TS fixture's fieldInfoPlugin.cjs is registered by the runner (tests/support/fixture_macros.rs).
+	},
+	"serialization": {
+		"checks": {
+			"category": "${FLAMEWORK_FIXTURE_CHECKS:-implicit}",
+			"mode": "${FLAMEWORK_FIXTURE_CHECKS_MODE:-assert}",
+			"side": "${FLAMEWORK_FIXTURE_CHECKS_SIDE:-both}",
+			"types": "${FLAMEWORK_FIXTURE_CHECKS_TYPES:-false}"
+		}
+	},
+	"networking": {
+		"serialization": "${FLAMEWORK_FIXTURE_SERIALIZATION:-true}"
+	},
+	"components": { "warningTimeout": 2, "watchRenames": true },
+	"scopes": { "active": "${FLAMEWORK_FIXTURE_SCOPES:-unset}" },
+	"testing": { "enabled": "${FLAMEWORK_FIXTURE_TESTS:-false}", "entry": "src/env" },
+	"flameworkTest": { "universeId": "1", "placeId": "2", "apiKey": "${FLAMEWORK_FIXTURE_KEY:-}" }
+}

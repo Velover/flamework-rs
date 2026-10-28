@@ -40,6 +40,10 @@ compiler. They need the built Flamework v2 packages (a checkout of its monorepo 
 folder: `FLAMEWORK_RS_RBXTS`). Without them they are skipped, saying so. The unit test that checks the embedded JSON
 schemas against the transformer's reads the monorepo from `FLAMEWORK_MONOREPO`.
 
+`diagnostics` is the TS transformer tests' failure assertions as one table (`tests/diagnostics/cases.json`, built on
+the TS tests' own fixture in `tests/diagnostics/fixture`): each case's build must fail with TS5's message. The file
+says how a case is written, marked or left to another test.
+
 ## Install
 
 `rbxtsc-fw` is installed with Cargo from a pinned commit, one folder per Flamework version (the paths below are
