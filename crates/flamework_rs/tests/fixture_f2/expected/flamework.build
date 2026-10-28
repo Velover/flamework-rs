@@ -5,7 +5,8 @@
 		"f2-fixture:out/shared/generic@Economy": "shared/generic@Economy",
 		"f2-fixture:out/shared/generic@Bank": "shared/generic@Bank",
 		"f2-fixture:out/shared/generic@LoggerImpl": "shared/generic@LoggerImpl",
-		"f2-fixture:out/shared/generic@Shop": "shared/generic@Shop"
+		"f2-fixture:out/shared/generic@Shop": "shared/generic@Shop",
+		"f2-fixture:out/shared/ünï@Tagged": "shared/ünï@Tagged"
 	},
 	"inputs": {
 		"config": "a987d7e62baa63d1df1926d02ebeef11a008e30a",

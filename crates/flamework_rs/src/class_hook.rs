@@ -17,7 +17,7 @@
 
 use rbxts_luau::create;
 use rbxts_plugin::ts::{Kind, Node, P, Type};
-use rbxts_plugin::{ClassSite, Cx, LuauExpr, LuauStmt, PResult, PluginDiagnostic, text_literal};
+use rbxts_plugin::{ClassSite, Cx, LuauExpr, LuauStmt, PResult, PluginDiagnostic, synthesized_string};
 use tsrs_ast::SymbolFlags;
 
 use crate::macros::{Analysis, Builder, UserMacro};
@@ -111,9 +111,9 @@ fn convert(
     };
     out.push(create::comment(format!(" (Flamework) {element} metadata")));
     for (key, value) in fields {
-        let mut args = vec![class.clone(), text_literal(key), value];
+        let mut args = vec![class.clone(), synthesized_string(key), value];
         if let Some(property) = property {
-            args.push(text_literal(property));
+            args.push(synthesized_string(property));
         }
         out.push(create::call_statement(create::call(create::property(reflect.clone(), "defineMetadata"), args)));
     }
@@ -196,7 +196,7 @@ fn parameter_fields(
                     .and_then(|d| d.name())
                     .filter(|n| n.kind() == Kind::Identifier)
                     .map_or("_binding_", |n| n.text());
-                text_literal(name)
+                synthesized_string(name)
             })
             .collect();
         fields.push(("flamework:parameter_names", create::array(values)));

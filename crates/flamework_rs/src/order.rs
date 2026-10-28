@@ -5,8 +5,8 @@
 //! the outermost call first and its callee last (`transformUserMacro` builds the arguments, then transforms
 //! `node.expression`). It also computed a class's metadata before transforming its members (and its decorators
 //! after them), where the class hook runs after the members. Each record therefore carries a key that sorts it into
-//! the TS transformer's order within the file; across files, the order is the program order (`finish` walks the
-//! parts in it).
+//! the TS transformer's order within the file; across files, the order is the transform order (roblox-ts's
+//! `getChangedFilePaths` order: `finish` walks the parts in it).
 
 use rbxts_plugin::Cx;
 use rbxts_plugin::ts::{Kind, Node, P};

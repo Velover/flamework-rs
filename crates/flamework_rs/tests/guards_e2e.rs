@@ -241,6 +241,24 @@ fn class_metadata_guards() {
     check("metadata");
 }
 
+/// Synthesized strings (`\u{…}` escapes, quotes and control characters by name) and TS5's property order.
+#[test]
+fn synthesized_strings_and_ts5_property_order() {
+    check("seams");
+}
+
+/// `Promise<T>` alone: the runtime library's `TS.Promise.is`, with no `t` import.
+#[test]
+fn promise_guard_imports_no_t() {
+    check("promise");
+}
+
+/// Dedup locals ahead of the TS statement around the call (`prereqList`), not inside the Luau expression.
+#[test]
+fn dedup_locals_go_before_the_ts_statement() {
+    check("dedupPlacement");
+}
+
 /// The refused types: the TS builder's messages, at the TS's nodes, with its "Type was defined here" notes.
 #[test]
 fn unsupported_types_are_refused() {

@@ -1,6 +1,7 @@
 //! `Plugin::finish` (the TS transformer's `saveArtifacts`, with `calculateGlobs`, `convertGlobs` and the empty glob
-//! and path warnings): the parts of every file, in program order, become this build's `flamework.build`, the late
-//! ids are resolved, and a game gets `include/flamework/{globs,config,paths}.json`.
+//! and path warnings): the parts of every file, in transform order (roblox-ts's `getChangedFilePaths` order), become
+//! this build's `flamework.build`, the late ids are resolved, and a game gets
+//! `include/flamework/{globs,config,paths}.json`.
 //!
 //! Every write goes through [`FinishCx`]: the compiler commits them in its one write phase, only when the build has
 //! no errors. Every read of the disk here goes through the compiler, recorded, so that watch runs `finish` again when
@@ -32,7 +33,7 @@ pub(crate) fn finish(
     let start = std::time::Instant::now();
     let mut info: BuildInfo = shared.build_info.clone();
 
-    // Ids, in program order: the sequence one checker transforming the files in that order makes (DESIGN §10.4).
+    // Ids, in transform order: the sequence one checker transforming the files in that order makes (DESIGN §10.4).
     let resolved = shared.ids.assign(&mut info, parts.iter().map(|(_, part)| part.new_ids.as_slice()));
     for (_, part) in parts {
         for key in &part.late_keys {

@@ -231,9 +231,10 @@ fn string_hashes_derive_from_the_build_seed() {
     );
 }
 
-/// Ids are the same whatever order the files were transformed in, as long as the parts are merged in program order.
+/// Ids are the same whatever order the checkers transformed the files in, as long as the parts are merged in transform
+/// order (roblox-ts's `getChangedFilePaths` order).
 #[test]
-fn late_ids_follow_program_order_not_transform_order() {
+fn late_ids_follow_transform_order_not_checker_order() {
     let ids = Ids::new(IdConfig {
         mode: IdMode::Short,
         hash_prefix: None,
@@ -253,11 +254,11 @@ fn late_ids_follow_program_order_not_transform_order() {
         vec![decl("b", "C"), decl("a", "A")],
     ];
 
-    let run = |transform_order: &[usize]| {
+    let run = |checker_order: &[usize]| {
         let mut info = BuildInfo::new("x");
         let mut parts: Vec<(usize, Vec<_>)> = Vec::new();
         let mut answers: Vec<(usize, Vec<IdAnswer>)> = Vec::new();
-        for &f in transform_order {
+        for &f in checker_order {
             let mut part = Vec::new();
             let mut file_answers = Vec::new();
             for d in &files[f] {

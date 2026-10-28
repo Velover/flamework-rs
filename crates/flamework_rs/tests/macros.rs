@@ -3,10 +3,8 @@
 //!
 //! `tests/fixture_f2/expected` is a full-mode build, checked against the TS5 pipeline (roblox-ts master with the
 //! monorepo transformer at 1a72fa1, `transformer.plugins` = the fixture's `fieldInfoPlugin.cjs`) on the same
-//! sources. It equals TS5's output but for:
-//! - the export tables of `caller`, `emit`, `generic`, `intrinsics`, `markers` and `unicode` (TS7 sorts them);
-//! - `emit.luau`: `Caller.Constant` hoists are spillable compiler temporaries (`_constant_22`, where TS named them
-//!   `constant_22`);
+//! sources (`seams.ts`: synthesized strings, TS5's property order, the hoisted-metadata comment ahead of the TS
+//! statement, `{@link}` text; `ünï.ts`: an id with non-ASCII characters). It equals TS5's output but for
 //! - `hashes.luau`: `Modding.Hash` is a fresh hash every clean build (TS5: a random uuid; here: derived from a
 //!   per-build seed), and `flamework.build` has no `stringHashes` table (DESIGN §10.3).
 

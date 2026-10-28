@@ -117,9 +117,11 @@ impl NodeMetadata {
                     } else {
                         cx.checker().get_type_at_location(name)
                     };
-                    let key = text.trim().to_owned();
-                    self.symbols.entry(key.clone()).or_default().push(symbol);
-                    self.types.entry(key).or_default().push(ty);
+                    // Keyed by the link's `text` as TypeScript 5 has it, untrimmed: `{@link T  name}` is `name`, but
+                    // `{@link T name }` is `name ` and `{@link T | name}` is `| name`, which no lookup matches.
+                    // (`JsDocLink::text` trims and drops the `|`.)
+                    self.symbols.entry(text.clone()).or_default().push(symbol);
+                    self.types.entry(text).or_default().push(ty);
                     self.type_traces.push((ty, part));
                 }
                 _ => {}

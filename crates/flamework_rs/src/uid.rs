@@ -2,11 +2,12 @@
 //! `findValidDeclaration`, `getDeclarationUid`, on top of [`crate::ids`].
 //!
 //! An id is known at once ([`IdAnswer::Now`]: full mode, ids in a build info, package ids) or late
-//! ([`IdAnswer::Late`]: `short` / `tiny` / `obfuscated`, assigned in `finish` in program order). Each request of a new
-//! id is recorded with its place in the TS transformer's walk ([`crate::order`]); `end_file` keeps the first of each.
+//! ([`IdAnswer::Late`]: `short` / `tiny` / `obfuscated`, assigned in `finish` in transform order). Each request of a
+//! new id is recorded with its place in the TS transformer's walk ([`crate::order`]); `end_file` keeps the first of
+//! each.
 
 use rbxts_plugin::ts::{Kind, Node, P, Symbol, Type};
-use rbxts_plugin::{Cx, LuauExpr, PResult, PluginDiagnostic, text_literal};
+use rbxts_plugin::{Cx, LuauExpr, PResult, PluginDiagnostic, synthesized_string};
 use tsrs_checker::TypeFlags;
 
 use crate::ids::{self, Declaration, IdAnswer};
@@ -17,7 +18,7 @@ impl FwInstance {
     /// The Luau value of an id: a string, or a late string resolved in `finish`.
     pub(crate) fn id_expr(&self, cx: &mut Cx<'_>, id: IdAnswer) -> LuauExpr {
         match id {
-            IdAnswer::Now(id) => text_literal(&id),
+            IdAnswer::Now(id) => synthesized_string(&id),
             IdAnswer::Late(key) => {
                 let mut file = self.file.borrow_mut();
                 if file.late.insert(key.clone()) {

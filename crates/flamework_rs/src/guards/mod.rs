@@ -7,26 +7,23 @@
 //!   `flamework:return_guard`), component instance guards;
 //! - [`guard_for_with_dedup`] (`buildGuardFromTypeWithDedup`): `Modding.Generic<T, "guard">` (`createGuard<T>()`).
 //!   With `transformer.optimizations.guardGenerationDedupLimit` set, types met that many times are declared once
-//!   as locals ahead of the statement (prereqs), or kept with the guard in a function of their own when the scope
-//!   has no room for them;
+//!   as locals ahead of the TS statement around the call (the TS's `prereqList`), or kept with the guard in a
+//!   function of their own when the scope has no room for them;
 //! - [`guard_fields`] (`buildGuardsFromType`): one guard per property (component attributes);
 //! - [`tuple_guards`] (`buildTupleGuardsIntrinsic`): the `tuple-guards` intrinsic, `{ { guards }, rest, { after } }`.
 //!
 //! **Text.** The Luau is what roblox-ts makes of the TS builder's output, so it matches a TS5 build byte for byte,
 //! but for the order of union members: TS7 orders a union's constituents its own way (deterministically), and the
 //! guard follows it (DESIGN §10.4, behaviour-neutral). Locals are named as TypeScript's printer names the builder's
-//! unique names ([`names`]).
+//! unique names ([`names`]); strings are the builder's synthesized literals ([`rbxts_plugin::synthesized_string`]);
+//! properties come in TS5's order ([`rbxts_plugin::Cx::ts5_properties_of_type`]).
 //!
 //! **Not the TS's.**
 //! - The Luau-limits budget: the TS lets Flamework's code claim 16 locals in a file's main chunk and 64 in a
 //!   function, shared by every call site there. Here each dedup guard checks its own count against those budgets
 //!   and against the locals the compiler has counted so far ([`rbxts_plugin::Cx::locals`]): a file whose dedup
-//!   guards together pass 16 locals keeps them as prereqs where the TS would wrap the later ones in a function.
-//! - `Promise<T>` (`Promise.is`, the runtime library's `TS.Promise`): plugins have no runtime-library primitive, so
-//!   the guard imports `t` first, which loads the runtime library as every `TS.import` does (the TS leaves the unused
-//!   `t` import out).
-//! - The guard-library warnings ("Flamework core was not found", "Valid `@rbxts/t` was not found") come once per
-//!   guard, at its first use of `t`, where the TS gives one per type it visits.
+//!   guards together pass 16 locals keeps them ahead of their statements where the TS would wrap the later ones in a
+//!   function.
 
 mod generator;
 mod library;
@@ -75,8 +72,8 @@ const FUNCTION_LOCAL_BUDGET: usize = 64;
 const COMPACT_LOCALS: usize = 150;
 
 /// `buildGuardFromTypeWithDedup`: the guard of `ty` for a `Generic<T, "guard">` argument at `node` (the call). With a
-/// dedup limit, the shared guards go ahead of the current statement as prereqs (`cx.prereq`), or, when the scope has
-/// no room for them, into a function with the guard.
+/// dedup limit, the shared guards go ahead of the TS statement around the call, where the TS's `prereqList` puts
+/// them (`cx.insert_before_statement`), or, when the scope has no room for them, into a function with the guard.
 pub fn guard_for_with_dedup(cx: &mut Cx<'_>, config: GuardConfig<'_>, node: P<Node>, ty: P<Type>) -> PResult<LuauExpr> {
     let mut generator = Generator::new(cx, config.package_name, node);
     if let Some(limit) = config.dedup_limit {
@@ -90,10 +87,7 @@ pub fn guard_for_with_dedup(cx: &mut Cx<'_>, config: GuardConfig<'_>, node: P<No
         let mut statements: Vec<Stmt> =
             generator.dedup.drain(..).map(|d| create::local(declared(&d.id), Some(d.value))).collect();
         generator.names.assign(generator.cx, &mut statements, Some(&mut guard));
-        // TODO(seam-additions): `Cx::insert_before_statement`, where the TS's `prereqList` puts them.
-        for statement in statements {
-            generator.cx.prereq(statement);
-        }
+        generator.cx.insert_before_statement(statements);
         return Ok(guard);
     }
 

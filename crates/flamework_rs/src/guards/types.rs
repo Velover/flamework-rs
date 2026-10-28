@@ -3,7 +3,7 @@
 
 use rbxts_luau::{Expr, create};
 use rbxts_plugin::ts::{Kind, Node, P, Symbol, Type};
-use rbxts_plugin::Cx;
+use rbxts_plugin::{Cx, synthesized_string};
 use tsrs_checker::{LiteralValue, ObjectFlags, TypeFlags};
 use tsrs_ast::SymbolFlags;
 
@@ -15,26 +15,6 @@ pub(crate) fn global(cx: &mut Cx<'_>, name: &str, meaning: SymbolFlags) -> Optio
 /// A global type symbol (`resolveName(name, undefined, SymbolFlags.Type, false)`).
 pub(crate) fn global_type(cx: &mut Cx<'_>, name: &str) -> Option<P<Symbol>> {
     global(cx, name, SymbolFlags::Type)
-}
-
-/// A string the TS builder writes with `f.string(text)`, as roblox-ts compiles it: TypeScript prints it double-quoted,
-/// escaping `\`, `"` and line breaks and tabs by name (`escapeString`), and roblox-ts keeps that text, so `"a\"b"`
-/// stays as written where [`rbxts_plugin::text_literal`] would pick the other quote. Other control characters are
-/// escaped as `text_literal` escapes them.
-pub fn text_literal(text: &str) -> Expr {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        match c {
-            '\\' => out.push_str("\\\\"),
-            '"' => out.push_str("\\\""),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if c.is_ascii_control() => out.push_str(&format!("\\x{:02x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    create::string_quoted(out, rbxts_luau::Quote::Double)
 }
 
 /// `getDeclarationOfType`: the first declaration of the type's symbol.
@@ -84,7 +64,7 @@ pub fn extract_types(cx: &mut Cx<'_>, types: &[P<Type>]) -> (bool, Vec<P<Type>>)
 /// negation, as `f.number` makes it).
 fn literal_expr(value: LiteralValue) -> Option<Expr> {
     match value {
-        LiteralValue::String(text) => Some(text_literal(text)),
+        LiteralValue::String(text) => Some(synthesized_string(text)),
         LiteralValue::Number(number) => Some(create::number(number.0)),
         LiteralValue::Boolean(value) => Some(create::bool(value)),
         LiteralValue::BigInt(_) => None,
@@ -263,7 +243,8 @@ pub(crate) fn instance_type_of(cx: &mut Cx<'_>, ty: P<Type>) -> Result<P<Type>, 
 }
 
 fn nominal_properties(cx: &mut Cx<'_>, ty: P<Type>) -> Vec<P<Symbol>> {
-    // TODO(seam-additions): `Cx::ts5_properties_of_type`, for TS5's property order.
+    // Counted and looked up only, so the order does not matter: TS7's list, without the cost of reordering an instance
+    // type's hundreds of properties.
     cx.checker().get_properties_of_type(ty).iter().copied().filter(|p| p.name().starts_with("_nominal_")).collect()
 }
 
@@ -312,7 +293,7 @@ pub fn property_key(cx: &mut Cx<'_>, property: P<Symbol>) -> TableKey {
 /// `["name"] =`; a number as `[10] =`, `[-1] =` (an infinity is `1e999`, as the TS writes it).
 pub fn key_expr(key: &TableKey) -> Expr {
     match key {
-        TableKey::String(text) => text_literal(text),
+        TableKey::String(text) => synthesized_string(text),
         TableKey::Number(value) if value.is_infinite() => {
             let literal = create::number_text("1e999");
             if *value < 0.0 { create::unary(rbxts_luau::UnaryOperator::Neg, literal) } else { literal }

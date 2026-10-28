@@ -37,27 +37,27 @@ local labels = labelsOf({ "name", "age" })
 local parameterNames = labelsOf({ "first", "second", "rest" })
 local unlabelled = labelsOf({ "", "" })
 -- Flamework user macro metadata (line 22)
-local _constant_22 = {
+local constant_22 = {
 	shared = true,
 }
 -- Flamework hoisted this macro's metadata (constant_22) to the file root.
 -- Constant: hoisted to the file root inside a function, inline at the root.
-local atRoot = constant(_constant_22)
+local atRoot = constant(constant_22)
 -- Flamework user macro metadata (line 25)
-local _constant_25 = {
+local constant_25 = {
 	shared = true,
 	deep = {
 		list = { 1, 2 },
 	},
 }
 -- Flamework user macro metadata (line 25)
-local _constant_25_1 = {
+local constant_25_1 = {
 	again = 1,
 }
 local function invoke()
 	-- Flamework hoisted this macro's metadata (constant_25) to the file root.
 	-- Flamework hoisted this macro's metadata (constant_25) to the file root.
-	return { constant(_constant_25), constant("plain"), constant(_constant_25_1) }
+	return { constant(constant_25), constant("plain"), constant(constant_25_1) }
 end
 -- Obfuscation intrinsics: with obfuscation off, the keys and order stay.
 local keys = keysOf({

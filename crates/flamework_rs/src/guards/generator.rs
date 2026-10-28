@@ -10,13 +10,13 @@ use std::collections::{HashMap, HashSet};
 
 use rbxts_luau::{AssignmentOperator, BinaryOperator, ElseBody, Expr, Stmt, UnaryOperator, create};
 use rbxts_plugin::ts::{Node, P, Type};
-use rbxts_plugin::{Abort, Cx, PResult, PluginDiagnostic};
+use rbxts_plugin::{Abort, Cx, PResult, PluginDiagnostic, synthesized_string};
 use tsrs_checker::{ElementFlags, TypeFlags};
 
 use super::names::{Names, declared, local_name, placeholder_index, ts_symbol_name};
 use super::types::{
     alias_symbol, declaration_of_type, extract_types, get_literal, global_type, has_call_signatures,
-    instance_type_of, is_class_or_interface, text_literal, is_instance_type, is_object, key_expr, property_key, simplify_union,
+    instance_type_of, is_class_or_interface, is_instance_type, is_object, key_expr, property_key, simplify_union,
 };
 
 /// `GUARD_RECURSION_LIMIT`: how many times one check may go round a recursive type into a value before it refuses
@@ -182,13 +182,18 @@ impl<'g, 'x> Generator<'g, 'x> {
         if let Some(t) = &self.t {
             return Ok(t.clone());
         }
-        if let Some(warning) = self.library_warning.take() {
-            let end = self.cx.file().source.get().end_of_file_token();
-            self.cx.warning(end, warning);
-        }
         let t = self.cx.import_named(&self.library.clone(), "t")?;
         self.t = Some(t.clone());
         Ok(t)
+    }
+
+    /// The guard library's warning, if any, at the end of the file: `getGuardLibrary` gives it each time the TS
+    /// builds a type's guard, and the compiler reports identical diagnostics once.
+    fn library_warning(&mut self) {
+        if let Some(warning) = self.library_warning {
+            let end = self.cx.file().source.get().end_of_file_token();
+            self.cx.warning(end, warning);
+        }
     }
 
     /// `t.<name>`
@@ -556,6 +561,7 @@ impl<'g, 'x> Generator<'g, 'x> {
 
     /// `buildGuardInner`
     fn build_guard_inner(&mut self, ty: P<Type>) -> PResult<Expr> {
+        self.library_warning();
         let flags = ty.flags();
 
         if ty.is_union() {
@@ -642,11 +648,10 @@ impl<'g, 'x> Generator<'g, 'x> {
 
         if flags.intersects(TypeFlags::TemplateLiteral) {
             // `${string}-id` becomes an anchored Lua pattern: the literal parts verbatim, each placeholder matching
-            // anything.
+            // anything. The TS writes it with `f.string`: a synthesized literal.
             let texts = ty.as_template_literal_type().texts();
             let pattern = format!("^{}$", texts.iter().map(|t| escape_pattern(t)).collect::<Vec<_>>().join(".*"));
-            // TODO(seam-additions): the pattern through `Cx::synthesized_string`, as the TS's synthesized literal.
-            return self.t_call("match", vec![text_literal(&pattern)]);
+            return self.t_call("match", vec![synthesized_string(&pattern)]);
         }
 
         // `Uppercase<T>` and friends are strings with a shape no runtime check can see.
@@ -683,11 +688,8 @@ impl<'g, 'x> Generator<'g, 'x> {
 
         if is(self.cx, "Promise") {
             // The TS writes the global `Promise.is`, which roblox-ts compiles to the runtime library's `TS.Promise`.
-            // Plugins have no runtime-library primitive yet (see the module docs): the guard library is imported
-            // first, which loads the runtime library as every `TS.import` does.
-            // TODO(seam-additions): `Cx::runtime_member("Promise")`, without the `t` import.
-            self.t()?;
-            return Ok(create::property(create::property(create::id("TS"), "Promise"), "is"));
+            // Its `t` import (`getGuardLibrary`) goes unused, and roblox-ts elides it.
+            return Ok(self.cx.runtime_member("Promise", "is"));
         }
 
         let rbx_symbols = self.rbx_symbols();
@@ -697,7 +699,7 @@ impl<'g, 'x> Generator<'g, 'x> {
             }
             if guard_symbol == Some(symbol) {
                 if RBX_TYPES_NEW.contains(name) {
-                    return self.t_call("typeof", vec![text_literal(name)]);
+                    return self.t_call("typeof", vec![synthesized_string(name)]);
                 }
                 return self.t_field(name);
             }
@@ -756,8 +758,7 @@ impl<'g, 'x> Generator<'g, 'x> {
             }
         };
         let mut children = Vec::new();
-        // TODO(seam-additions): `Cx::ts5_properties_of_type`, for TS5's property order.
-        for &property in self.cx.checker().get_properties_of_type(ty) {
+        for property in self.cx.ts5_properties_of_type(ty) {
             let property_type = self.cx.checker().get_type_of_property_of_type_exported(ty, property.name());
             let on_class = self.cx.checker().get_property_of_type_exported(instance_type, property.name()).is_some();
             if let Some(property_type) = property_type
@@ -765,12 +766,12 @@ impl<'g, 'x> Generator<'g, 'x> {
             {
                 // Intersections are taken for children.
                 let guard = self.build_guard(property_type)?;
-                children.push((text_literal(property.name()), guard));
+                children.push((synthesized_string(property.name()), guard));
             }
         }
 
         let class_name = instance_type.symbol().map_or("", |s| s.name());
-        let base = self.t_call("instanceIsA", vec![text_literal(class_name)])?;
+        let base = self.t_call("instanceIsA", vec![synthesized_string(class_name)])?;
         if children.is_empty() {
             return Ok(base);
         }
@@ -955,8 +956,7 @@ impl<'g, 'x> Generator<'g, 'x> {
         }
 
         let mut guards = Vec::new();
-        // TODO(seam-additions): `Cx::ts5_properties_of_type`, for TS5's property order.
-        for &property in self.cx.checker().get_properties_of_type(ty) {
+        for property in self.cx.ts5_properties_of_type(ty) {
             let property_declaration = property.value_declaration();
             let Some(property_type) = self.cx.checker().get_type_of_property_of_type_exported(ty, property.name())
             else {
@@ -971,7 +971,11 @@ impl<'g, 'x> Generator<'g, 'x> {
                 self.tracking.push((property_declaration, property_type));
             }
             let guard = self.build_guard(property_type)?;
-            let key = if interface { key_expr(&property_key(self.cx, property)) } else { text_literal(property.name()) };
+            let key = if interface {
+                key_expr(&property_key(self.cx, property))
+            } else {
+                synthesized_string(property.name())
+            };
             guards.push((key, guard));
             if property_declaration.is_some() {
                 self.tracking.pop();
@@ -987,7 +991,7 @@ impl<'g, 'x> Generator<'g, 'x> {
 
 /// `typeIs(value, name)` as roblox-ts compiles it: `type(value) == "name"`.
 fn type_is(value: Expr, name: &str) -> Expr {
-    create::binary(create::call(create::id("type"), vec![value]), BinaryOperator::Eq, text_literal(name))
+    create::binary(create::call(create::id("type"), vec![value]), BinaryOperator::Eq, synthesized_string(name))
 }
 
 /// `(() => { … })()`: `(function() … end)()`.
@@ -1047,8 +1051,8 @@ fn types_requiring_dedup(cx: &mut Cx<'_>, ty: P<Type>, limit: u32) -> HashSet<P<
                 recurse(cx, walk, member, modifier)?;
             }
         } else if ty.flags().intersects(TypeFlags::Object) && !is_instance_type(cx, ty) {
-            // TODO(seam-additions): `Cx::ts5_properties_of_type`, for TS5's property order.
-            for &property in cx.checker().get_properties_of_type(ty) {
+            // In TS5's order: it decides which of two types met equally often is declared first.
+            for property in cx.ts5_properties_of_type(ty) {
                 let Some(property_type) = cx.checker().get_type_of_property_of_type_exported(ty, property.name()) else {
                     continue;
                 };

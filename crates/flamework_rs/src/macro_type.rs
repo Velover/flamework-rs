@@ -237,14 +237,13 @@ impl<'c, 'a> MacroCx<'c, 'a> {
         t.flags().intersects(TypeFlags::Object)
     }
 
-    /// `getFields`: the properties of an object type, in declaration order; `None` when it is not object-like.
+    /// `getFields`: the properties of an object type, in TypeScript 5's order; `None` when it is not object-like.
     pub fn fields(&mut self, t: P<Type>) -> Option<Vec<Field>> {
         if !self.is_object_like(t) {
             return None;
         }
         let mut fields = Vec::new();
-        let properties = self.checker().get_properties_of_type_exported(t);
-        for &property in properties {
+        for property in self.cx.ts5_properties_of_type(t) {
             let name = property.name();
             let Some(ty) = self.checker().get_type_of_property_of_type_exported(t, name) else { continue };
             fields.push(Field {

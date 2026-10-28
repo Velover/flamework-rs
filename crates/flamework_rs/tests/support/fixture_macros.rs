@@ -6,7 +6,7 @@
 use flamework_rs::{Constituents, Flamework, Literal, MacroCx, MacroType, Primitive};
 use rbxts_luau::{BinaryOperator, create};
 use rbxts_plugin::ts::{P, Type};
-use rbxts_plugin::{LuauExpr, PResult, text_literal};
+use rbxts_plugin::{LuauExpr, PResult, synthesized_string};
 
 /// `{ name, kind, optional, readonly }` for every field of an object type, each name after `prefix`.
 pub struct FieldInfo {
@@ -21,8 +21,8 @@ impl MacroType for FieldInfo {
             .map(|field| {
                 let kind = describe(cx, field.ty);
                 create::map(vec![
-                    (create::string("name"), text_literal(&format!("{}{}", self.prefix, field.name))),
-                    (create::string("kind"), text_literal(&kind)),
+                    (create::string("name"), synthesized_string(&format!("{}{}", self.prefix, field.name))),
+                    (create::string("kind"), synthesized_string(&kind)),
                     (create::string("optional"), create::bool(field.optional)),
                     (create::string("readonly"), create::bool(field.readonly)),
                 ])
@@ -37,7 +37,7 @@ pub struct TransformerVersion;
 
 impl MacroType for TransformerVersion {
     fn expand(&self, _: &mut MacroCx<'_, '_>, _: P<Type>) -> PResult<LuauExpr> {
-        Ok(text_literal(flamework_rs::VERSION))
+        Ok(synthesized_string(flamework_rs::VERSION))
     }
 }
 
@@ -47,7 +47,7 @@ pub struct Describe;
 impl MacroType for Describe {
     fn expand(&self, cx: &mut MacroCx<'_, '_>, ty: P<Type>) -> PResult<LuauExpr> {
         let text = describe(cx, ty);
-        Ok(text_literal(&text))
+        Ok(synthesized_string(&text))
     }
 }
 

@@ -26,7 +26,7 @@
 use rbxts_luau::create;
 use rbxts_plugin::ts::{Kind, Node, P, Symbol, Type};
 use rbxts_plugin::{
-    Arg, CallKind, CallSite, Callee, Claim, Cx, LuauExpr, PResult, PluginDiagnostic, text_literal,
+    Arg, CallKind, CallSite, Callee, Claim, Cx, LuauExpr, PResult, PluginDiagnostic, synthesized_string,
 };
 use tsrs_ast::SymbolFlags;
 use tsrs_checker::{ElementFlags, LiteralValue, TypeFlags};
@@ -519,8 +519,8 @@ impl Analysis<'_> {
             return Ok(UserMacro::Many(macros));
         }
         if is_object_type(target) {
-            // Keyed as the type declares its properties.
-            let properties = cx.checker().get_properties_of_type_exported(target).to_vec();
+            // Keyed as the type declares its properties, in TS5's order.
+            let properties = cx.ts5_properties_of_type(target);
             let mut entries = Vec::with_capacity(properties.len());
             for member in properties {
                 let Some(member_type) = property(cx, target, member.name()) else { continue };
@@ -754,7 +754,7 @@ impl Builder<'_> {
                     let id = fw.type_uid(cx, *target, self.node)?;
                     Ok(fw.id_expr(cx, id))
                 }
-                GenericKind::Text => Ok(text_literal(&cx.checker().type_to_string_exported(*target))),
+                GenericKind::Text => Ok(synthesized_string(&cx.checker().type_to_string_exported(*target))),
                 GenericKind::Dependency { concise, metadata } => {
                     self.dependency(cx, *target, *concise, metadata.as_deref())
                 }
@@ -780,7 +780,7 @@ impl Builder<'_> {
                         continue;
                     }
                     let key = match key {
-                        TableKey::Str(s) => text_literal(s),
+                        TableKey::Str(s) => synthesized_string(s),
                         TableKey::Num(n) => create::number(*n),
                     };
                     fields.push((key, value));
@@ -788,7 +788,7 @@ impl Builder<'_> {
                 Ok(create::map(fields))
             }
             UserMacro::Literal(literal) => Ok(match literal {
-                LiteralMacro::Str(s) => text_literal(s),
+                LiteralMacro::Str(s) => synthesized_string(s),
                 LiteralMacro::Num(n) => create::number(*n),
                 LiteralMacro::Bool(b) => create::bool(*b),
                 LiteralMacro::Undefined => create::nil(),
@@ -826,8 +826,8 @@ impl Builder<'_> {
             CallerKind::Line => create::number(f64::from(pos.line + 1)),
             CallerKind::Character => create::number(f64::from(pos.character + 1)),
             CallerKind::Width => create::number(f64::from(cx.utf16_width(self.node))),
-            CallerKind::Uuid => text_literal(&self.callsite_uuid(cx)),
-            CallerKind::Text => text_literal(cx.source_text(self.node)),
+            CallerKind::Uuid => synthesized_string(&self.callsite_uuid(cx)),
+            CallerKind::Text => synthesized_string(cx.source_text(self.node)),
             CallerKind::Other => create::nil(),
         })
     }
@@ -878,10 +878,13 @@ impl Builder<'_> {
         let debug = debug_name(cx, self.node);
         let name = local_name(cx, &format!("{debug}_{line}"));
         cx.insert_before_root_statement([create::comment(format!(" Flamework user macro metadata (line {line})"))]);
-        // A spillable hoist: past the main chunk's local budget the compiler makes it a field of one table, which is
-        // what the TS transformer's `macroMetadata` table was for.
-        let local = cx.hoist_spillable(result, &name);
-        cx.comment(&format!(" Flamework hoisted this macro's metadata ({name}) to the file root."));
+        // A spillable hoist named as the TS's `f.identifier(name, true)` (`name`, else `name_1`, …): past the main
+        // chunk's local budget the compiler makes it a field of one table, which is what the TS transformer's
+        // `macroMetadata` table was for.
+        let local = cx.hoist_spillable_named(result, &name);
+        // The TS's `state.prereq(comment)`: ahead of the TS statement around the call.
+        let comment = format!(" Flamework hoisted this macro's metadata ({name}) to the file root.");
+        cx.insert_before_statement([create::comment(comment)]);
         Ok(local)
     }
 
@@ -981,7 +984,7 @@ impl Builder<'_> {
         file.env_inputs.push((self.key.clone(), seq, (name.to_owned(), hash)));
         drop(file);
         Ok(match variable.as_deref().or(fallback_value) {
-            Some(value) => text_literal(value),
+            Some(value) => synthesized_string(value),
             None => create::nil(),
         })
     }
@@ -1147,7 +1150,7 @@ fn build_path(fw: &FwInstance, cx: &mut Cx<'_>, call: P<Node>, ty: P<Type>, key:
     let seq = file.next();
     file.events.push((key, seq, PathEvent::Path(PathUse { path: value.to_owned(), macro_name, line, column, raises })));
     drop(file);
-    Ok(create::array(rbx_path.iter().map(|name| text_literal(name)).collect()))
+    Ok(create::array(rbx_path.iter().map(|name| synthesized_string(name)).collect()))
 }
 
 /// `buildPathGlobIntrinsic`: the glob relative to the package root (obfuscated under obfuscation), recorded for
@@ -1174,7 +1177,7 @@ fn build_path_glob(
     let glob_use = GlobUse { glob: absolute.clone(), text: glob.to_owned(), macro_name, line, column };
     file.events.push((key, seq, PathEvent::Glob(glob_use)));
     drop(file);
-    Ok(text_literal(&shared.obfuscate_text(&absolute, Some("addPaths"))))
+    Ok(synthesized_string(&shared.obfuscate_text(&absolute, Some("addPaths"))))
 }
 
 /// `isCoreRequireModules`: the call is core's `requireModules`, which raises after five seconds rather than waiting.

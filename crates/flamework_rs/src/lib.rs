@@ -9,7 +9,8 @@
 //! - [`env`]: `.env` / `.env.local` loading and the `${NAME:-fallback}` substitution;
 //! - [`build_info`]: `flamework.build` read and write (byte for byte), package build-info discovery, the version
 //!   checks;
-//! - [`ids`]: the `full` / `short` / `tiny` / `obfuscated` id rules, late-bound in program order (§10.4);
+//! - [`ids`]: the `full` / `short` / `tiny` / `obfuscated` id rules, late-bound in transform order (roblox-ts's
+//!   `getChangedFilePaths` order, §10.4);
 //! - the byte-exact libraries (§10.5): [`hashids`], [`uuid`], [`sha`], [`glob`], plus [`json`] (JavaScript's
 //!   `JSON.parse` / `JSON.stringify` with its property order) and [`jsonc`] (TypeScript's JSON-with-comments
 //!   reader, as `ts.parseConfigFileTextToJson` reads a config file).
@@ -27,7 +28,7 @@
 //!   parts of later milestones are declined (or refused) loudly;
 //! - [`guards`]: `t` guards from types (F3), for class metadata, `Generic<T, "guard">` and `tuple-guards`;
 //! - [`macro_type`]: user plugins' macro types (`MacroType`, registered with [`Flamework::macro_type`]);
-//! - [`finish`]: id assignment in program order, `flamework.build`, the include JSON, the glob and path warnings;
+//! - [`finish`]: id assignment in transform order, `flamework.build`, the include JSON, the glob and path warnings;
 //! - [`inputs`]: reading files and variables as recorded build inputs;
 //! - [`part_codec`]: [`FwFilePart`] as bytes, for the compiler's incremental state.
 //!

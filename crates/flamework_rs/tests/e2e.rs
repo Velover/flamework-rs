@@ -2,9 +2,9 @@
 //! `tests/fixture`: class metadata, ids in every mode, path and glob macros, `flamework.build` and the include JSON.
 //!
 //! `tests/fixture/expected` holds a full-mode build, checked against the TS5 pipeline (roblox-ts master with the
-//! monorepo transformer at 1a72fa1) on the same sources: equal but for `namespaced.luau` (TS7 sorts the exports),
-//! `flamework.build` (glob matches are sorted, Q-F4; its identifiers follow roblox-ts's `getChangedFilePaths` order,
-//! as rbxts-rs transforms in it since S3) and `globs.json` (the sorted matches).
+//! monorepo transformer at 1a72fa1) on the same sources: every Luau file is equal; `flamework.build` and `globs.json`
+//! differ in the order of glob matches, which are sorted here (Q-F4). The identifiers in `flamework.build` follow
+//! roblox-ts's `getChangedFilePaths` order, as rbxts-rs transforms in it since S3.
 //!
 //! The fixture is copied to a temporary directory with a `node_modules` made as an install would have it: the
 //! `@rbxts` packages copied (`FLAMEWORK_RS_RBXTS`, else the real project's, whose compiler-types both
@@ -243,7 +243,7 @@ fn keys(text: &str) -> Vec<String> {
     }
 }
 
-/// `short` ids are late strings, assigned in program order in `finish`: the Luau and `flamework.build` agree, a
+/// `short` ids are late strings, assigned in transform order in `finish`: the Luau and `flamework.build` agree, a
 /// second build of the same sources gives the same bytes (but for the salt, which every clean build rotates), and
 /// the key order is DESIGN §10.4's.
 #[test]
@@ -260,7 +260,7 @@ fn short_ids_are_late_and_consistent() {
     );
     let info = json::parse(&build).unwrap();
     let identifiers = info.get("identifiers").and_then(JsValue::as_object).unwrap();
-    // The new ids, in program order (`finish` assigns the counters walking the parts in it).
+    // The new ids, in transform order (`finish` assigns the counters walking the parts in it).
     let ids: Vec<(String, String)> =
         identifiers.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap().to_owned())).collect();
     assert!(!ids.is_empty());

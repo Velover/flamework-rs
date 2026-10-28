@@ -4,7 +4,7 @@
 //! Shaped for DESIGN §10.4. `full` ids are path-derived and formatted at once. `short`, `tiny` and `obfuscated` ids
 //! are Hashids of a sequential counter, so they depend on allocation order: during the transform [`Ids::request`]
 //! answers them with a late key (the internal id) and the file part records the new internal id; at `finish`,
-//! [`Ids::assign`] walks the file parts in program order and allocates the counters, exactly as one checker
+//! [`Ids::assign`] walks the file parts in transform order and allocates the counters, exactly as one checker
 //! transforming the files in that order would. Every new id, `full` ones too, enters the identifier table in that
 //! order, so `flamework.build` is the same for any checker count.
 
@@ -268,7 +268,7 @@ impl Ids {
         }
     }
 
-    /// Allocates the new ids of every file part, in program order, into the build info's table. Returns the late
+    /// Allocates the new ids of every file part, in transform order, into the build info's table. Returns the late
     /// strings to resolve (internal id → id); `full` ids are recorded but need no resolving.
     pub fn assign<'a>(
         &self,
