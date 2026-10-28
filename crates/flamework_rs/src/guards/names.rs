@@ -57,9 +57,19 @@ impl Names {
 
     /// Names every placeholder in `statements` and then `expr`, in render order (see the module docs).
     pub(crate) fn assign(&self, cx: &Cx<'_>, statements: &mut [Stmt], expr: Option<&mut Expr>) {
+        self.assign_with(statements, expr, |base| unique_name(cx, base));
+    }
+
+    /// [`Names::assign`] with the names given by `unique` (a base name in, the local's name out), in render order.
+    pub(crate) fn assign_with(
+        &self,
+        statements: &mut [Stmt],
+        expr: Option<&mut Expr>,
+        mut unique: impl FnMut(&str) -> String,
+    ) {
         let mut assigned: Vec<Option<String>> = vec![None; self.bases.len()];
         let mut name_of = |index: usize| -> String {
-            assigned[index].get_or_insert_with(|| unique_name(cx, &self.bases[index])).clone()
+            assigned[index].get_or_insert_with(|| unique(&self.bases[index])).clone()
         };
         let named = std::cell::RefCell::new(&mut name_of);
         let mut on_expr = |expr: &mut Expr| {
@@ -162,6 +172,32 @@ pub(crate) fn ts_symbol_name(name: &str) -> std::borrow::Cow<'_, str> {
         Some(rest) => std::borrow::Cow::Owned(format!("__{rest}")),
         None => std::borrow::Cow::Borrowed(name),
     }
+}
+
+/// The globals of the TS builder's guard that a guard's Luau names, in render order (the serializer's
+/// `checkGlobalsIn`, which visits the TS guard's identifiers): `typeIs` (which roblox-ts compiled to `type(…)`),
+/// `error`, `Enum`, and `Promise` (the runtime library's `TS.Promise`).
+pub(crate) fn ts_globals_in(expr: &Expr) -> Vec<&'static str> {
+    let mut found = Vec::new();
+    let mut copy = expr.clone();
+    walk_expr(
+        &mut copy,
+        &mut |expr: &mut Expr| match expr {
+            Expr::Call(call) if matches!(&call.expression, Expr::Identifier(id) if id.name == "type") => {
+                found.push("typeIs");
+            }
+            Expr::Identifier(id) if id.name == "error" => found.push("error"),
+            Expr::Identifier(id) if id.name == "Enum" => found.push("Enum"),
+            Expr::PropertyAccess(access)
+                if access.name == "Promise" && matches!(&access.expression, Expr::Identifier(id) if id.name == "TS") =>
+            {
+                found.push("Promise");
+            }
+            _ => {}
+        },
+        &mut |_| {},
+    );
+    found
 }
 
 // --- the walker: every expression and declared identifier, in render order ---

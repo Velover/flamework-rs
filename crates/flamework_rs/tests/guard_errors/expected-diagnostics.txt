@@ -518,3 +518,10 @@ error errors.ts:38:10: Class "Thing" was encountered. Flamework does not support
 error errors.ts:47:9: could not find constraint of type parameter
     errors.ts:46:31: Type was defined here: T
 error errors.ts:51:9: could not find constraint of type parameter
+error errors.ts:59:26: Could not find type for field
+    errors.ts:55:11: Type was defined here: SymbolKeyed
+error errors.ts:60:32: Could not find type for field
+    errors.ts:60:54: Type was defined here: { a: number; nested: { b: number; [marker]: number; }; }
+    errors.ts:60:67: Type was defined here: { b: number; [marker]: number; }
+error errors.ts:67:25: flamework-rs does not support the property '\u007fab' yet: rbxts-rs's checker takes a name that starts with U+007F for one of its own and does not list the property. Rename the property.
+    errors.ts:63:11: Type was defined here: Reserved

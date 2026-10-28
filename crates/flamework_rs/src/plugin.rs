@@ -143,6 +143,8 @@ pub struct FwInstance {
     pub(crate) macro_symbols: RefCell<HashMap<P<Symbol>, bool>>,
     pub(crate) file: RefCell<FileState>,
     pub(crate) macro_types: Arc<MacroTypes>,
+    /// The serializer generator of the current file ([`crate::serializer`]).
+    pub(crate) serializer: RefCell<crate::serializer::FileSerializer>,
 }
 
 impl FwInstance {
@@ -208,6 +210,7 @@ impl Plugin for Flamework {
             macro_symbols: RefCell::default(),
             file: RefCell::default(),
             macro_types: self.macro_types.clone(),
+            serializer: RefCell::default(),
         }
     }
 
@@ -257,6 +260,10 @@ impl PluginInstance for FwInstance {
             part: FwFilePart { file_id, ..FwFilePart::default() },
             ..FileState::default()
         };
+        *self.serializer.borrow_mut() = crate::serializer::FileSerializer::default();
+        // The file's serializers, built before any hook names anything: TypeScript's printer named their top-level
+        // declarations ahead of everything it printed.
+        crate::macros::prepare_file_serializers(self, cx);
         Ok(())
     }
 
@@ -282,10 +289,12 @@ impl PluginInstance for FwInstance {
     }
 
     fn class(&self, cx: &mut Cx<'_>, class: &ClassSite) -> PResult<Vec<LuauStmt>> {
+        crate::serializer::enter_statement(self, cx, class.node);
         crate::class_hook::class_metadata(self, cx, class)
     }
 
-    fn end_file(&self, _cx: &mut Cx<'_>) -> PResult<FwFilePart> {
+    fn end_file(&self, cx: &mut Cx<'_>) -> PResult<FwFilePart> {
+        crate::serializer::check_output(self, cx);
         let mut file = std::mem::take(&mut *self.file.borrow_mut());
         file.id_requests.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
         let mut seen = HashSet::new();

@@ -198,6 +198,31 @@ fn macro_types() {
     assert_eq!(errors, vec!["error bad.ts: mustBeUnion requires a union type".to_owned()]);
 }
 
+/// A unique-symbol key is left out where TS5 finds no type for it (`getTypeOfPropertyOfType(type, property.name)`):
+/// a `Modding.Many` object map (`Modding.inspect`, TS5's bytes) and a macro type's `fields` (TS5's `getFields` skips
+/// a field without a type). A user key that starts with U+007F but is no internal name (`"\u007f@x"`) stays.
+#[test]
+fn symbol_keys_are_left_out() {
+    let Some(project) = Project::new(FIXTURE, "symbols") else { return };
+    project.write(
+        "src/shared/symbols.ts",
+        "import { Modding } from \"@flamework-experimental/core\";\n\
+         import { fieldInfo } from \"./markers\";\n\n\
+         declare const sym: unique symbol;\n\
+         interface Keyed {\n\ta: string;\n\t[sym]: number;\n\t\"\\u007f@x\": boolean;\n\tb: number;\n}\n\n\
+         export const m1 = Modding.inspect<{ a: \"x\"; [sym]: \"y\"; b: 1 }>();\n\
+         export const fields = fieldInfo<Keyed>();\n",
+    );
+    let report = project.build_with(flamework_with_fixture_macros());
+    assert_clean(&report);
+    let out = luau(&report, "shared/symbols.luau");
+    assert!(out.contains("local m1 = Modding.inspect({\n\ta = \"x\",\n\tb = 1,\n})"), "{out}");
+    assert!(!out.contains("@sym@"), "{out}");
+    let names: Vec<&str> = out.lines().filter_map(|line| line.trim().strip_prefix("name = ")).collect();
+    assert_eq!(names.len(), 3, "{out}");
+    assert!(names[0] == "\"fxa\"," && names[1].ends_with("@x\",") && names[2] == "\"fxb\",", "{out}");
+}
+
 /// `intrinsic-const` refuses an argument that is not a literal, naming the parameter.
 #[test]
 fn const_parameters_need_literals() {
@@ -226,20 +251,25 @@ fn unions_of_different_macros_are_refused() {
     assert!(errors[0].contains("carry different Flamework macros"), "{errors:#?}");
 }
 
-/// Later milestones: the serializer is declined, and listed in the build's warning; a guard (F3) is generated.
+/// Later milestones: a network intrinsic (F5) is declined, and listed in the build's warning; a serializer (F4) and a
+/// guard (F3) are generated.
 #[test]
 fn later_milestones_are_loud() {
     let Some(project) = Project::new(FIXTURE, "later") else { return };
     project.write(
         "src/shared/later.ts",
-        "import { Flamework } from \"@flamework-experimental/core\";\n\nexport const serializer = Flamework.createSerializer<{ a: number }>();\n",
+        "import { Modding } from \"@flamework-experimental/core\";\n\n/** @metadata macro */\nexport function decoder<T>(meta?: Modding.Intrinsic<\"network-decoder\", [T]>) {\n\treturn meta;\n}\n\nexport const d = decoder<[number]>();\n",
     );
     let report = project.build_with(flamework_with_fixture_macros());
     assert_clean(&report);
     let warnings = report.warnings.join("\n");
-    assert!(warnings.contains("1 Flamework macro call(s) need features rbxts-rs does not have yet (F4: 1)"), "{warnings}");
-    assert!(warnings.contains("createSerializer: the serializer intrinsic (1)"), "{warnings}");
+    assert!(warnings.contains("1 Flamework macro call(s) need features rbxts-rs does not have yet (F5: 1)"), "{warnings}");
+    assert!(warnings.contains("the network-decoder intrinsic (1)"), "{warnings}");
 
+    project.write(
+        "src/shared/serialized.ts",
+        "import { Flamework } from \"@flamework-experimental/core\";\n\nexport const serializer = Flamework.createSerializer<{ a: number }>();\n",
+    );
     project.write(
         "src/shared/guarded.ts",
         "import { Flamework } from \"@flamework-experimental/core\";\n\nexport const guard = Flamework.createGuard<string>();\n",
@@ -248,7 +278,9 @@ fn later_milestones_are_loud() {
     assert_clean(&report);
     let guarded = luau(&report, "shared/guarded.luau");
     assert!(guarded.contains("Flamework.createGuard(t.string)"), "{guarded}");
-    assert!(report.warnings.join("\n").contains("(F4: 1)"), "{:?}", report.warnings);
+    let serialized = luau(&report, "shared/serialized.luau");
+    assert!(serialized.contains("buffer.writef64(buf, 0, v.a)"), "{serialized}");
+    assert!(report.warnings.join("\n").contains("(F5: 1)"), "{:?}", report.warnings);
 }
 
 /// `tuple-guards` (F3's `tuple_guards`): `{ { guards }, rest or nil, { after }? }`, as TS5 builds it.

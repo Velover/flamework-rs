@@ -7,6 +7,10 @@ publish.workspace = true
 license.workspace = true
 description = "`rbxtsc-fw`: the rbxtsc command line with Flamework compiled in (DESIGN §11.6), the bin a Flamework project builds with."
 
+[features]
+# Parity tooling only (see flamework_rs's `layout-dump`).
+layout-dump = ["flamework_rs/layout-dump"]
+
 [dependencies]
 rbxts_cli.workspace = true
 flamework_rs.workspace = true

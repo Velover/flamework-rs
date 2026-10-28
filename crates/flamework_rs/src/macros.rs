@@ -18,10 +18,15 @@
 //! ahead of the statement, before any argument is compiled, as the TS's `prereqList` puts them), and the
 //! `tuple-guards` intrinsic is [`crate::guards::tuple_guards`].
 //!
-//! **Later milestones.** `serializer` and `intrinsic-serializer-options` (F4), the network intrinsics and
-//! `intrinsic-middleware` (F5) decline the call before anything is compiled, so roblox-ts compiles it as a plain call,
-//! and finish gives one warning naming every such site's milestone. The decision reads only the AST and types (a hook
-//! cannot decline after it compiled something).
+//! **Serializers.** The `serializer` intrinsic is [`crate::serializer::build_serializer`], versioned by the argument of
+//! the `intrinsic-serializer-options` parameter. Every serializer site of the file is built when the file begins
+//! ([`prepare_file_serializers`]), so that the generated names come out as TypeScript's printer gave them.
+//! `Many<(A | B)[]>` lists its values as the call (or the union's alias) writes them, else by key
+//! ([`crate::serializer::union_member_order`]).
+//!
+//! **Later milestones.** The network intrinsics and `intrinsic-middleware` (F5) decline the call before anything is
+//! compiled, so roblox-ts compiles it as a plain call, and finish gives one warning naming every such site's
+//! milestone. The decision reads only the AST and types (a hook cannot decline after it compiled something).
 
 use rbxts_luau::create;
 use rbxts_plugin::ts::{Kind, Node, P, Symbol, Type};
@@ -88,6 +93,8 @@ pub(crate) enum Intrinsic {
     Plugin { id: Option<String>, input: Option<P<Type>> },
     /// `tuple-guards`: the guards of a tuple's elements.
     TupleGuards(P<Type>),
+    /// `serializer`: `T`'s serializer.
+    Serializer(P<Type>),
     /// Brought by a later milestone.
     Later { id: String, milestone: &'static str },
     /// An unusable intrinsic, with the TS transformer's message.
@@ -129,11 +136,25 @@ impl UserMacro {
             _ => None,
         }
     }
+
+    /// The `T` of every `serializer` intrinsic in it, in build order.
+    pub(crate) fn serializer_types(&self, out: &mut Vec<P<Type>>) {
+        match self {
+            UserMacro::Generic { kind: GenericKind::Dependency { metadata: Some(items), .. }, .. }
+            | UserMacro::Many(items) => items.iter().for_each(|m| m.serializer_types(out)),
+            UserMacro::Map(entries) => entries.iter().for_each(|(_, m)| m.serializer_types(out)),
+            UserMacro::SharedRef(inner) => inner.serializer_types(out),
+            UserMacro::Intrinsic(Intrinsic::ObfuscateObject { inner, .. } | Intrinsic::ShuffleArray(inner)) => {
+                inner.serializer_types(out);
+            }
+            UserMacro::Intrinsic(Intrinsic::Serializer(ty)) => out.push(*ty),
+            _ => {}
+        }
+    }
 }
 
 /// The parameter intrinsics a macro declaration can carry that later milestones bring.
-const LATER_PARAMETER_INTRINSICS: [(&str, &str); 2] =
-    [("intrinsic-middleware", "F5"), ("intrinsic-serializer-options", "F4")];
+const LATER_PARAMETER_INTRINSICS: [(&str, &str); 1] = [("intrinsic-middleware", "F5")];
 
 /// The call hook for a callee classified as a user macro (`transformCallExpression` / `transformNewExpression` and
 /// `transformUserMacro`).
@@ -208,7 +229,9 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         return Ok(Claim::Decline);
     }
 
-    // Taken: from here on, build and compile.
+    // Taken: from here on, build and compile. What the serializers of the root statement hoisted printed ahead of
+    // it, so it is named first (a hook may not decline after naming).
+    crate::serializer::enter_statement(fw, cx, expression);
     let mut values: Vec<(usize, LuauExpr)> = Vec::with_capacity(parameters.len());
     for (index, found) in &parameters {
         let key = fw.order_key(cx, expression, (0, *index as u32));
@@ -437,6 +460,116 @@ fn is_core_dependency_resolver(cx: &Cx<'_>, declaration: P<Node>) -> bool {
     crate::class_hook::declaring_package(cx, declaration).as_deref() == Some(CORE_PACKAGE)
 }
 
+/// `getSerializerVersion`: the version the call's `intrinsic-serializer-options` argument gives (`None` without one).
+fn serializer_version_at(fw: &FwInstance, cx: &mut Cx<'_>, call: P<Node>) -> PResult<Option<u32>> {
+    let signature = cx.checker().get_resolved_signature_exported(call);
+    let options = signature.declaration().and_then(|declaration| {
+        fw.metadata(cx, declaration).symbols("intrinsic-serializer-options").and_then(|s| s.first().copied())
+    });
+    crate::serializer::serializer_version(cx, call, options)
+}
+
+/// Builds every serializer of the file, once per file ([`crate::serializer::prepare_serializers`]): TypeScript's
+/// printer named the generated identifiers over the whole file, the declarations of every top-level statement first,
+/// so each serializer's names depend on the others'. Called from the file's first hook (`begin_file`), ahead of
+/// anything else Flamework names. The sites are the `serializer` intrinsics of every user macro call the hook will
+/// take, grouped by root statement, in the order the TS transformer built them ([`collect_sites`]). A call the hook
+/// declines or fails on is left out; its errors come again when the call is compiled (the compiler keeps one of each).
+pub(crate) fn prepare_file_serializers(fw: &FwInstance, cx: &mut Cx<'_>) {
+    if std::mem::replace(&mut fw.serializer.borrow_mut().file_prepared, true) {
+        return;
+    }
+    let file = cx.file().source;
+    let mut groups = Vec::new();
+    for &statement in file.as_node().statements() {
+        let mut sites = Vec::new();
+        collect_sites(fw, cx, statement, &mut sites);
+        if !sites.is_empty() {
+            groups.push((statement, sites));
+        }
+    }
+    crate::serializer::prepare_serializers(fw, cx, &groups);
+}
+
+/// The `serializer` sites under `node`, in the order the TS transformer built them, which is the order its printer
+/// printed their values in: a user macro call's arguments in index order, each generated one where its parameter is
+/// and each written one with the macro calls in it (`wrap<A>(wrap<B>(0))` builds `B` first); any other node's
+/// children in source order.
+fn collect_sites(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, out: &mut Vec<crate::serializer::SerializerSite>) {
+    if matches!(node.kind(), Kind::CallExpression | Kind::NewExpression)
+        && let Some(generated) = serializer_parameters(fw, cx, node)
+    {
+        let version = serializer_version_at(fw, cx, node);
+        if let Some(callee) = node.expression() {
+            collect_sites(fw, cx, callee, out);
+        }
+        let arguments = node.arguments();
+        let highest = generated.iter().map(|(index, _)| *index).max().unwrap_or(0);
+        for index in 0..arguments.len().max(highest + 1) {
+            match generated.iter().find(|(i, _)| *i == index) {
+                Some((_, types)) => {
+                    // a call whose version fails is left to its hook, which reports the error
+                    if let Ok(version) = version {
+                        out.extend(types.iter().map(|&ty| crate::serializer::SerializerSite { node, ty, version }));
+                    }
+                }
+                None => {
+                    if let Some(&argument) = arguments.get(index) {
+                        collect_sites(fw, cx, argument, out);
+                    }
+                }
+            }
+        }
+        return;
+    }
+    node.for_each_child(&mut |child| {
+        collect_sites(fw, cx, child, out);
+        false
+    });
+}
+
+/// The parameters of `call` whose generated values hold `serializer` intrinsics, with each one's `T`s in build order:
+/// `None` for a call with none, that is not a user macro, or that the hook declines (`super()`, a later milestone)
+/// or fails on.
+fn serializer_parameters(fw: &FwInstance, cx: &mut Cx<'_>, call: P<Node>) -> Option<Vec<(usize, Vec<P<Type>>)>> {
+    if call.expression().is_some_and(|callee| callee.kind() == Kind::SuperKeyword) {
+        return None;
+    }
+    let signature = cx.checker().get_resolved_signature_exported(call);
+    let declaration = signature.declaration()?;
+    let symbol = declaration.symbol()?;
+    if !fw.is_user_macro(cx, symbol) {
+        return None;
+    }
+    let metadata = fw.metadata(cx, declaration);
+    if LATER_PARAMETER_INTRINSICS.iter().any(|(key, _)| metadata.symbols(key).is_some()) {
+        return None;
+    }
+    let analysis = Analysis { fw, node: call };
+    let arguments = call.arguments();
+    let mut generated = Vec::new();
+    for index in 0..parameter_count(cx, signature) {
+        if !is_undefined_argument(arguments.get(index).copied()) {
+            continue;
+        }
+        let parameter_type = cx.checker().get_type_at_position_exported(signature, index);
+        let target = cx.checker().get_non_nullable_type(parameter_type);
+        match analysis.of_union(cx, target) {
+            Ok(Some(found)) if found.later().is_some() => return None,
+            Ok(Some(found)) => {
+                let mut types = Vec::new();
+                found.serializer_types(&mut types);
+                if !types.is_empty() {
+                    generated.push((index, types));
+                }
+            }
+            Ok(None) => {}
+            Err(_) => return None,
+        }
+    }
+    (!generated.is_empty()).then_some(generated)
+}
+
 fn property(cx: &mut Cx<'_>, ty: P<Type>, name: &str) -> Option<P<Type>> {
     cx.checker().get_type_of_property_of_type_exported(ty, name)
 }
@@ -450,6 +583,29 @@ pub(crate) fn string_literal(ty: P<Type>) -> Option<&'static str> {
         Some(LiteralValue::String(s)) => Some(s),
         _ => None,
     }
+}
+
+/// The union type node among the type arguments written at `call` (nested ones too, first in source order) whose
+/// type is `union`: `({ z: 1 } | { a: 1 })` in `Modding.inspect<({ z: 1 } | { a: 1 })[]>()`.
+fn written_union(cx: &mut Cx<'_>, call: P<Node>, union: P<Type>) -> Option<P<Node>> {
+    fn visit(cx: &mut Cx<'_>, node: P<Node>, union: P<Type>, found: &mut Option<P<Node>>) {
+        if found.is_some() {
+            return;
+        }
+        if node.kind() == Kind::UnionType && cx.checker().get_type_from_type_node_exported(node) == union {
+            *found = Some(node);
+            return;
+        }
+        node.for_each_child(&mut |child| {
+            visit(cx, child, union, found);
+            found.is_some()
+        });
+    }
+    let mut found = None;
+    for &argument in call.type_arguments() {
+        visit(cx, argument, union, &mut found);
+    }
+    found
 }
 
 /// Reads macro types (`getUserMacroOf*`): types only, nothing compiled or recorded.
@@ -521,13 +677,17 @@ impl Analysis<'_> {
         }
         if cx.checker().is_array_type_exported(target) {
             let element = cx.checker().get_type_arguments_exported(target).first().copied();
+            // The union's members as written (in the call's type arguments, else in the alias it was declared as),
+            // which is TS5's order (`targetType.types`, the order its checker made them in) for a union the call
+            // writes out of new types; the rest by a key of each member (DESIGN §10.4).
             let constituents = match element {
-                Some(e) if e.flags().intersects(TypeFlags::Union) => e.types().to_vec(),
+                Some(e) if e.flags().intersects(TypeFlags::Union) => {
+                    let written = written_union(cx, self.node, e);
+                    crate::serializer::union_member_order(self.fw, cx, self.node, written, e)?
+                }
                 Some(e) => vec![e],
                 None => Vec::new(),
             };
-            // The union's members in TS7's fixed order. TODO(F4): the written order, through the serializer's
-            // `orderAlternatives` (DESIGN §10.4), once F4 brings it.
             let mut macros = Vec::new();
             for member in constituents {
                 // `never` is what a union without members is: an empty array.
@@ -543,7 +703,10 @@ impl Analysis<'_> {
             let properties = cx.ts5_properties_of_type(target);
             let mut entries = Vec::with_capacity(properties.len());
             for member in properties {
-                let Some(member_type) = property(cx, target, member.name()) else { continue };
+                // TS5 finds no type for a symbol key or a private name, and leaves the member out.
+                let Some(member_type) = crate::guards::types::ts5_type_of_property(cx, target, member) else {
+                    continue;
+                };
                 let value = self.of_many(cx, member_type)?;
                 entries.push((property_key(cx, member), value));
             }
@@ -662,7 +825,7 @@ impl Analysis<'_> {
                 input: inputs.get(1).copied(),
             },
             "tuple-guards" => inputs.first().map_or_else(invalid, |&t| Intrinsic::TupleGuards(t)),
-            "serializer" => Intrinsic::Later { id: id.to_owned(), milestone: "F4" },
+            "serializer" => inputs.first().map_or_else(invalid, |&t| Intrinsic::Serializer(t)),
             "network-decoder" | "network-result-decoder" | "network-unreliable" => {
                 Intrinsic::Later { id: id.to_owned(), milestone: "F5" }
             }
@@ -946,6 +1109,10 @@ impl Builder<'_> {
                 crate::macro_type::execute(fw, cx, self.node, id, *input)
             }
             Intrinsic::TupleGuards(ty) => crate::guards::tuple_guards(cx, fw.shared.guard_config(), self.node, *ty),
+            Intrinsic::Serializer(ty) => {
+                let version = serializer_version_at(fw, cx, self.node)?;
+                crate::serializer::build_serializer(fw, cx, self.node, *ty, version)
+            }
             Intrinsic::Later { id, milestone } => Err(cx.error(
                 self.node,
                 format!("The {id} intrinsic is not in rbxts-rs's Flamework yet ({milestone})."),
@@ -1235,12 +1402,12 @@ mod tests {
     fn later_milestones_are_found_in_nested_macros() {
         let literal = UserMacro::Literal(LiteralMacro::Num(1.0));
         assert!(literal.later().is_none());
-        let serializer = UserMacro::Intrinsic(Intrinsic::Later { id: "serializer".into(), milestone: "F4" });
+        let decoder = UserMacro::Intrinsic(Intrinsic::Later { id: "network-decoder".into(), milestone: "F5" });
         let nested = UserMacro::SharedRef(Box::new(UserMacro::Map(vec![
             (TableKey::Str("a".into()), literal.clone()),
-            (TableKey::Num(2.0), UserMacro::Many(vec![literal, serializer])),
+            (TableKey::Num(2.0), UserMacro::Many(vec![literal, decoder])),
         ])));
         let later = nested.later().expect("found");
-        assert_eq!((later.what.as_str(), later.milestone), ("the serializer intrinsic", "F4"));
+        assert_eq!((later.what.as_str(), later.milestone), ("the network-decoder intrinsic", "F5"));
     }
 }

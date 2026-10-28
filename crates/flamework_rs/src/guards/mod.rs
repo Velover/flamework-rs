@@ -79,6 +79,20 @@ pub fn guard_for_in_context(
     Ok(guard)
 }
 
+/// [`guard_for`] with its locals left unnamed: the guard holds placeholders, and `names` gives each its base name
+/// ([`names::Names::assign_with`]). For a guard that lands inside other generated code (the serializer's), whose
+/// names TypeScript's printer gave in print order, together with that code's.
+pub(crate) fn guard_for_unnamed(
+    cx: &mut Cx<'_>,
+    config: GuardConfig<'_>,
+    node: P<Node>,
+    ty: P<Type>,
+) -> PResult<(LuauExpr, names::Names)> {
+    let mut generator = Generator::new(cx, config.package_name, node);
+    let guard = generator.build_guard(ty)?;
+    Ok((guard, generator.names))
+}
+
 /// The TS's `LOCAL_BUDGET` and `FUNCTION_LOCAL_BUDGET` (`luauLimits.ts`), and `COMPACT_LOCALS`.
 const FILE_LOCAL_BUDGET: usize = 16;
 const FUNCTION_LOCAL_BUDGET: usize = 64;

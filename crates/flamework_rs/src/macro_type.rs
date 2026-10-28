@@ -245,7 +245,8 @@ impl<'c, 'a> MacroCx<'c, 'a> {
         let mut fields = Vec::new();
         for property in self.cx.ts5_properties_of_type(t) {
             let name = property.name();
-            let Some(ty) = self.checker().get_type_of_property_of_type_exported(t, name) else { continue };
+            // TS5 finds no type for a symbol key or a private name, and leaves the field out.
+            let Some(ty) = crate::guards::types::ts5_type_of_property(self.cx, t, property) else { continue };
             fields.push(Field {
                 name: name.to_owned(),
                 ty,
@@ -376,14 +377,14 @@ impl<'c, 'a> MacroCx<'c, 'a> {
                 .any(|m| m.flags().intersects(TypeFlags::Undefined | TypeFlags::Null))
     }
 
-    /// `getName`: the alias's name, else the symbol's.
+    /// `getName`: the alias's name, else the symbol's, as TS5 spells it (`__type`, `__class` for an internal one).
     pub fn type_name(&self, t: P<Type>) -> Option<String> {
         if let Some(alias) = t.alias()
             && let Some(symbol) = alias.symbol()
         {
             return Some(symbol.name().to_owned());
         }
-        t.symbol().map(|s| s.name().to_owned())
+        t.symbol().map(|s| tsrs_ast::escape_internal_symbol_name(tsrs_ast::symbol_name(s)))
     }
 
     /// `toString`: `typeToString`.

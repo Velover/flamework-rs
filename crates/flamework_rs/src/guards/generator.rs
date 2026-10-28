@@ -17,6 +17,7 @@ use super::names::{Names, declared, local_name, placeholder_index, ts_symbol_nam
 use super::types::{
     alias_symbol, declaration_of_type, extract_types, get_literal, global_type, has_call_signatures,
     instance_type_of, is_class_or_interface, is_instance_type, is_object, key_expr, property_key, simplify_union,
+    ts5_type_of_property,
 };
 
 /// `GUARD_RECURSION_LIMIT`: how many times one check may go round a recursive type into a value before it refuses
@@ -783,7 +784,7 @@ impl<'g, 'x> Generator<'g, 'x> {
         };
         let mut children = Vec::new();
         for property in self.cx.ts5_properties_of_type(ty) {
-            let property_type = self.cx.checker().get_type_of_property_of_type_exported(ty, property.name());
+            let property_type = ts5_type_of_property(self.cx, ty, property);
             let on_class = self.cx.checker().get_property_of_type_exported(instance_type, property.name()).is_some();
             if let Some(property_type) = property_type
                 && !on_class
@@ -979,10 +980,13 @@ impl<'g, 'x> Generator<'g, 'x> {
             self.tracking.push((declaration, ty));
         }
 
+        if let Some(name) = crate::guards::types::hidden_declared_property(self.cx, ty) {
+            return Err(self.fail(crate::guards::types::hidden_property_message(&name) + "."));
+        }
         let mut guards = Vec::new();
         for property in self.cx.ts5_properties_of_type(ty) {
             let property_declaration = property.value_declaration();
-            let Some(property_type) = self.cx.checker().get_type_of_property_of_type_exported(ty, property.name())
+            let Some(property_type) = ts5_type_of_property(self.cx, ty, property)
             else {
                 return Err(self.fail("Could not find type for field"));
             };
@@ -1077,7 +1081,7 @@ fn types_requiring_dedup(cx: &mut Cx<'_>, ty: P<Type>, limit: u32) -> HashSet<P<
         } else if ty.flags().intersects(TypeFlags::Object) && !is_instance_type(cx, ty) {
             // In TS5's order: it decides which of two types met equally often is declared first.
             for property in cx.ts5_properties_of_type(ty) {
-                let Some(property_type) = cx.checker().get_type_of_property_of_type_exported(ty, property.name()) else {
+                let Some(property_type) = ts5_type_of_property(cx, ty, property) else {
                     continue;
                 };
                 recurse(cx, walk, property_type, modifier)?;

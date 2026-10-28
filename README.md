@@ -4,14 +4,14 @@ Flamework's TypeScript transformer (v2, `@flamework-experimental/transformer`) p
 [rbxts-rs](#dependencies) (roblox-ts in Rust, on tsrs), plus `rbxtsc-fw`: the `rbxtsc` command line with Flamework
 compiled in, the binary a Flamework project builds with.
 
-- `crates/flamework_rs`: the plugin (ids, decorators and metadata, user macros and intrinsics, guards, components,
-  `flamework.build`, the include JSON) and the byte-exact libraries its output depends on.
+- `crates/flamework_rs`: the plugin (ids, decorators and metadata, user macros and intrinsics, guards, the serializer,
+  components, `flamework.build`, the include JSON) and the byte-exact libraries its output depends on.
 - `crates/rbxtsc_fw`: the `rbxtsc-fw` binary. It takes roblox-ts's `build` arguments and returns its exit codes;
   Flamework is on for a project whose tsconfig lists `@flamework-experimental/transformer` in
   `compilerOptions.plugins`.
 
-**Status:** work in progress, provided as is. Later milestones (the serializer, networking) are still missing; a macro
-call that needs one compiles as a plain call, with a warning.
+**Status:** work in progress, provided as is. A later milestone (networking) is still missing; a macro call that needs
+it compiles as a plain call, with a warning.
 
 **Licence:** MIT (`LICENSE`). Parts are ports of Flamework, hashids, uuid, glob, minimatch and brace-expansion; their
 notices are in `THIRD-PARTY-NOTICES.md`.
@@ -34,11 +34,11 @@ cargo test --locked
 bash tools/check-deps.sh
 ```
 
-The end-to-end tests (`e2e`, `guards_e2e`, `macros`, `macros_env`) build fixtures with the real compiler. They need
-the built Flamework v2 packages (a checkout of its monorepo with `packages/core/out` built: `FLAMEWORK_RS_MONOREPO`)
-and the `@rbxts` packages `compiler-types`, `t` and `types` (a `node_modules/@rbxts` folder: `FLAMEWORK_RS_RBXTS`).
-Without them they are skipped, saying so. The unit test that checks the embedded JSON schemas against the
-transformer's reads the monorepo from `FLAMEWORK_MONOREPO`.
+The end-to-end tests (`e2e`, `guards_e2e`, `macros`, `macros_env`, `serializer_e2e`) build fixtures with the real
+compiler. They need the built Flamework v2 packages (a checkout of its monorepo with `packages/core/out` built:
+`FLAMEWORK_RS_MONOREPO`) and the `@rbxts` packages `compiler-types`, `t` and `types` (a `node_modules/@rbxts`
+folder: `FLAMEWORK_RS_RBXTS`). Without them they are skipped, saying so. The unit test that checks the embedded JSON
+schemas against the transformer's reads the monorepo from `FLAMEWORK_MONOREPO`.
 
 ## Developing against a local rbxts-rs
 
@@ -72,3 +72,23 @@ node tools/parity.cjs <rbxtsc-fw exe> <project dir> <reference out dir> <work di
 It copies the project into the work dir (without its `out`, `include` and build infos; links are kept as junctions),
 builds it, and prints `build exit N` and `identical A, differing B, only ours C, only ref D` (`tools/compare.cjs`, also
 usable on its own). The options are described at the top of `tools/parity.cjs`.
+
+## Known limitations
+
+Where flamework-rs's output may differ from Flamework's TS transformer (TypeScript 5) in ways it cannot detect:
+
+- **Property names that start with U+007F (DEL).** rbxts-rs's checker (tsrs) spells its internal names with this
+  character, where TypeScript escapes them with `__`, and takes a user name that starts with U+007F followed by any
+  character other than `@` or `#` for one of its own: it never lists the property. flamework-rs refuses such a name
+  when it is written as a property name of an object, interface or class type (a serializer or a guard of it). Written
+  any other way (a const or enum computed key, an intersection, a mapped type, `Record`, `Partial`, `Omit` or a
+  `keyof`-derived type, an instance-guard intersection, component attributes (read through the `AttributeGuards`
+  mapped type), an instance shape, a `Modding.inspect` or `Many` map, a macro type's fields), the
+  property is left out of serializers, guards and macros without an error, and an object left with no fields is
+  serialized as a blob. The fix belongs in tsrs.
+- **Order that depends on symbol ids.** A union that no written type orders (`Box<A | B>` reaching `value: T`) orders
+  its members by a text of each type, and an object's text spells a unique-symbol key with the symbol's id
+  (`__@sym@12`). Two keys whose texts agree up to the id (two unique symbols with the same name from different modules,
+  or a user key `"__@zeta@1"` against a real `[zeta]`) are ordered by ids that differ between the compilers. TS5's own
+  order there depends on its global symbol counter, so it can change with unrelated edits; give such unions a written
+  order (a type alias of the union) instead.

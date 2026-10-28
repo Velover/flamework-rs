@@ -654,8 +654,9 @@ impl Config<'_> {
         };
         for super_member in cx.checker().get_properties_of_type(super_attributes).to_vec() {
             let name = super_member.name();
-            let prop = cx.checker().get_type_of_property_of_type_exported(attributes, name);
-            let super_prop = cx.checker().get_type_of_property_of_type_exported(super_attributes, name);
+            // TS5 finds no type for a symbol key or a private name (`crate::guards::types::is_internal_property`).
+            let prop = crate::guards::types::ts5_type_of_property(cx, attributes, super_member);
+            let super_prop = crate::guards::types::ts5_type_of_property(cx, super_attributes, super_member);
             if prop.is_some() && prop == super_prop {
                 omitted.push(name.to_owned());
             }
