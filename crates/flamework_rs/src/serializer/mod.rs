@@ -8,10 +8,11 @@
 //! **Entry points** (one generator per file and checker, reset by `begin_file`):
 //! - [`build_serializer`]: `Flamework.createSerializer<T>()`'s `{ [version,] serialize, deserialize }` (the
 //!   `serializer` intrinsic, `crate::macros`), with [`serializer_version`] for the `intrinsic-serializer-options`
-//!   parameter, after [`prepare_serializers`] built every serializer of the file in `begin_file`;
+//!   parameter, after [`prepare_serializers`] built every site of the file (serializers, network decoders,
+//!   networking call sites) in `begin_file`;
 //! - [`union_member_order`]: a union's members in the serializer's order, for `Many<(A | B)[]>` (`crate::macros`);
-//! - [`build_decoder`] / [`build_result_decoder`]: the `network-decoder` / `network-result-decoder` intrinsics;
-//! - [`encode_list`] / [`encode_result`]: a call site's inline packing (networking, F5);
+//! - [`build_decoder`]: the `network-decoder` / `network-result-decoder` intrinsics;
+//! - [`call_site`]: a networking call site's inline packing ([`crate::networking::calls`] builds it);
 //! - [`packing_key`]: a list's wire key, for networking's union-of-members check;
 //! - [`check_output`]: the end-of-file self-check (`checkSerializerOutput`).
 //!
@@ -19,7 +20,7 @@
 
 mod checks;
 mod classify;
-mod codegen;
+pub(crate) mod codegen;
 mod hoist;
 pub mod ir;
 mod layout;
@@ -28,12 +29,14 @@ mod order;
 mod pressure;
 pub mod typeinfo;
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use rbxts_plugin::ts::{Kind as SyntaxKind, Node, P, SourceFile, Symbol, Type};
 use rbxts_plugin::{Cx, LuauExpr, LuauStmt, PResult, PluginDiagnostic};
 
+use crate::networking::calls::{BuiltCall, CallShape};
 use crate::plugin::FwInstance;
 use crate::setup::FwShared;
 use ir::{E, Id, Ids, S};
@@ -327,7 +330,6 @@ pub enum Fit {
 
 /// Where a call site's values go (`EncodingSite`).
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
 pub struct EncodingSite {
     pub name: Option<String>,
     pub result: bool,
@@ -387,8 +389,13 @@ pub struct Generator {
     pub(crate) compact: bool,
     pub(crate) hidden_here: HashMap<String, Option<P<Symbol>>>,
     pub(crate) global_aliases: HashMap<String, Id>,
-    /// The file's budget of Flamework locals in the main chunk (`LocalBudget`, keyed by file).
+    /// The file's budget of Flamework locals in the main chunk (`LocalBudget`, keyed by file): what the file's
+    /// hoisted helpers claimed (live to the file's end), and what its networking call sites claimed ahead of their
+    /// statements.
     pub(crate) budget_used: u32,
+    pub(crate) budget_placed: u32,
+    /// The function scopes' budgets and every claim's statement, for networking's call sites.
+    pub(crate) net_budget: crate::networking::scope::Budget,
     /// A refusal recorded while building (a hidden global), returned when the value is done.
     pub(crate) sticky: Option<rbxts_plugin::Abort>,
     /// `TRUE`: a set's values, seen as a map's.
@@ -452,6 +459,8 @@ impl Generator {
             hidden_here: HashMap::new(),
             global_aliases: HashMap::new(),
             budget_used: 0,
+            budget_placed: 0,
+            net_budget: Default::default(),
             sticky: None,
             true_kind: None,
             ordering_macro: false,
@@ -460,10 +469,20 @@ impl Generator {
 
     /// `LocalBudget.claim(file, count)`.
     pub fn claim_locals(&mut self, count: u32) -> bool {
-        if self.budget_used + count > LOCAL_BUDGET {
+        if self.budget_used + self.budget_placed + count > LOCAL_BUDGET {
             return false;
         }
         self.budget_used += count;
+        true
+    }
+
+    /// `LocalBudget.claim(file, count, statement)`: a networking call site's locals ahead of a top-level statement.
+    pub fn claim_file_locals(&mut self, count: u32, statement: P<Node>) -> bool {
+        if self.budget_used + self.budget_placed + count > LOCAL_BUDGET {
+            return false;
+        }
+        self.budget_placed += count;
+        self.net_budget.place(count, statement);
         true
     }
 }
@@ -480,17 +499,25 @@ pub(crate) type GResult<T> = PResult<T>;
 
 // --- the per-instance state ---------------------------------------------------------------------------------------
 
+/// Which intrinsic a prepared value is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueTag {
+    Serializer,
+    Decoder,
+    ResultDecoder,
+}
+
 /// The serializer state of one instance's current file.
 #[derive(Default)]
 pub struct FileSerializer {
     pub generator: Option<Generator>,
     pub names: crate::ts_names::TsNames,
-    /// Serializers built ahead with the others of their file ([`prepare_serializers`]), by call: `T` and the value,
-    /// in build order.
-    pub prepared: HashMap<P<Node>, Vec<(P<Type>, LuauExpr)>>,
-    /// What each root statement's serializers hoisted, by the statement's first site, inserted at that site.
-    pub pending_hoists: HashMap<P<Node>, Vec<LuauStmt>>,
-    /// Whether the file's serializer sites were prepared ([`prepare_serializers`]).
+    /// Values built ahead with the others of their file ([`prepare_serializers`]), by call: `T`, the intrinsic and the
+    /// value, in build order.
+    pub prepared: HashMap<P<Node>, Vec<PreparedValue>>,
+    /// What each root statement's sites hoisted, by group, inserted at the group's first site that is lowered.
+    pending_hoists: HashMap<usize, Vec<LuauStmt>>,
+    /// Whether the file's sites were prepared ([`prepare_serializers`]).
     pub file_prepared: bool,
     /// The prepared root statements' code, built but not yet all named and lowered, in file order, and how many of
     /// them have their hoisted statements done ([`enter_statement`]).
@@ -499,14 +526,28 @@ pub struct FileSerializer {
     /// The group of each prepared site's call, and of each root statement with sites.
     group_of: HashMap<P<Node>, usize>,
     group_of_statement: HashMap<P<Node>, usize>,
+    /// The networking call sites built ahead, by call.
+    calls: HashMap<P<Node>, Rc<RefCell<BuiltCall>>>,
+    /// The call sites whose packing lands ahead of a statement, by the function whose printer pass names their
+    /// locals (the body's `generateNames`), in file order.
+    scope_calls: HashMap<P<Node>, Vec<P<Node>>>,
+    /// The functions (and the file) whose call sites' locals are named.
+    entered: HashSet<P<Node>>,
 }
 
-/// One root statement's prepared serializers: what its sites hoisted, each site's value (`None` for a site that
-/// failed) in build order, and how many of the values are named and lowered.
+/// One root statement's prepared sites: what they hoisted, each value's (`None` for a site that failed, or a decoder
+/// of a list that carries nothing) in build order, and how many of the values are named and lowered.
+/// A value built ahead: `T`, the intrinsic and the value.
+pub type PreparedValue = (P<Type>, ValueTag, LuauExpr);
+/// A group's site of a value: the call, `T`, the intrinsic and the value once built.
+type GroupObject = (P<Node>, P<Type>, ValueTag, Option<E>);
+/// A packed call site built ahead, by its call.
+type PreparedCall = (P<Node>, Rc<RefCell<BuiltCall>>);
+
 #[derive(Default)]
 struct Group {
     hoisted: Vec<S>,
-    objects: Vec<(P<Node>, P<Type>, Option<E>)>,
+    objects: Vec<GroupObject>,
     named: usize,
 }
 
@@ -540,7 +581,7 @@ fn lower_output(
 }
 
 /// Runs a build of the generator and returns the hoisted statements with its result.
-fn run<T>(
+pub(crate) fn run<T>(
     fw: &FwInstance,
     cx: &mut Cx<'_>,
     node: P<Node>,
@@ -576,21 +617,7 @@ pub fn build_serializer(
     ty: P<Type>,
     version: Option<u32>,
 ) -> PResult<LuauExpr> {
-    let group = fw.serializer.borrow().group_of.get(&node).copied();
-    if let Some(group) = group {
-        finish_hoists_through(fw, cx, group);
-        name_values_through(fw, cx, group, node, ty);
-    }
-    let prepared = {
-        let mut state = fw.serializer.borrow_mut();
-        let entries = state.prepared.get_mut(&node);
-        entries.and_then(|entries| entries.iter().position(|(t, _)| *t == ty).map(|at| entries.remove(at).1))
-    };
-    if let Some(prepared) = prepared {
-        let hoists = fw.serializer.borrow_mut().pending_hoists.remove(&node);
-        if let Some(hoists) = hoists {
-            cx.insert_before_root_statement(hoists);
-        }
+    if let Some(prepared) = take_prepared(fw, cx, node, ty, ValueTag::Serializer) {
         return Ok(prepared);
     }
     let written = written_type_argument(node);
@@ -605,98 +632,251 @@ pub fn build_serializer(
     Ok(values.remove(0))
 }
 
-/// A `createSerializer` site for [`prepare_serializers`]: the call, `T` and the version.
-#[derive(Clone, Copy, Debug)]
+/// The value prepared for the site (`node`, `ty`, `tag`), named and lowered with the values before it, with what its
+/// root statement hoisted placed; `None` for a site that was not prepared.
+fn take_prepared(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, ty: P<Type>, tag: ValueTag) -> Option<LuauExpr> {
+    let group = fw.serializer.borrow().group_of.get(&node).copied();
+    if let Some(group) = group {
+        finish_hoists_through(fw, cx, group);
+        name_values_through(fw, cx, group, node, ty, tag);
+    }
+    let prepared = {
+        let mut state = fw.serializer.borrow_mut();
+        let entries = state.prepared.get_mut(&node);
+        entries.and_then(|entries| {
+            entries.iter().position(|(t, g, _)| *t == ty && *g == tag).map(|at| entries.remove(at).2)
+        })
+    }?;
+    if let Some(group) = group {
+        flush_hoists(fw, cx, group);
+    }
+    Some(prepared)
+}
+
+/// Places what a group's sites hoisted, at the first of them that is lowered.
+fn flush_hoists(fw: &FwInstance, cx: &mut Cx<'_>, group: usize) {
+    let hoists = fw.serializer.borrow_mut().pending_hoists.remove(&group);
+    if let Some(hoists) = hoists {
+        cx.insert_before_root_statement(hoists);
+    }
+}
+
+/// A site for [`prepare_serializers`]: the call (or the macro call an intrinsic is in), `T` and what it builds.
+#[derive(Clone, Debug)]
 pub struct SerializerSite {
     pub node: P<Node>,
     pub ty: P<Type>,
-    pub version: Option<u32>,
+    pub kind: SiteKind,
 }
 
-/// Builds every serializer of a file together, in the order the TS transformer met them, and keeps each for its
-/// call's [`build_serializer`], which also places what its root statement hoisted. `groups` are the root statements
-/// with sites, in file order, each with its sites.
+/// What a prepared site builds.
+#[derive(Clone, Debug)]
+pub enum SiteKind {
+    /// `createSerializer<T>()`, with its version.
+    Serializer { version: Option<u32> },
+    /// `network-decoder` (`T` the argument list) or, with `result`, `network-result-decoder` (`T` the function type).
+    Decoder { result: bool },
+    /// A networking call site's packing (`T` unused: the call's shape says what is packed).
+    Call(Rc<CallShape>),
+}
+
+impl SiteKind {
+    /// The kind with the call's serializer version (a `createSerializer` site's).
+    pub fn with_version(&self, version: Option<u32>) -> SiteKind {
+        match self {
+            SiteKind::Serializer { .. } => SiteKind::Serializer { version },
+            other => other.clone(),
+        }
+    }
+}
+
+/// Builds every site of a file together, in the order the TS transformer met them, and keeps each for its hook,
+/// which also places what its root statement hoisted. `groups` are the root statements with sites, in file order,
+/// each with its sites: `createSerializer` values, network decoders and networking call sites, which share the file's
+/// hoisted helpers.
 ///
 /// TypeScript's printer named the generated identifiers in print order, after the declarations of every top-level
 /// statement of the file (`generateNames`), so a site's names depend on the sites after it: what a later site
 /// hoists to the top of the file (an enum table's `item`, a guard) takes its name first, and within one root
 /// statement everything its sites hoisted prints ahead of all their values. Built together, the names come out as
 /// TS5's. Call it once per file, before any other hook names anything (`begin_file`). A site that fails reports its
-/// error here and later gets `nil` (the build fails on the error). A call with several serializers lists one site
-/// for each, in build order.
+/// error here and later gets `nil` (the build fails on the error). A call with several values lists one site for
+/// each, in build order.
 ///
-/// The file-level declarations of every group are named here. The rest of what a root statement hoisted is named at
-/// the statement's first Flamework hook ([`enter_statement`]), as the printer printed it ahead of the statement, and
-/// each site's value when the site is built ([`build_serializer`]), where the printer printed it: what other hooks
-/// named before (an earlier statement's code, a guard earlier in the same statement) comes first, as in TS5.
+/// The file-level declarations of every group are named here, with the locals the file's own call sites put ahead
+/// of their statements (`generateNames` of the file walks into its statements' blocks). The rest of what a root
+/// statement hoisted is named at the statement's first Flamework hook ([`enter_statement`]), as the printer printed
+/// it ahead of the statement; a function's call sites' locals when its body is entered (the printer's
+/// `generateNames` of the body); and each value when its site is built ([`build_serializer`]), where the printer
+/// printed it: what other hooks named before (an earlier statement's code, a guard earlier in the same statement)
+/// comes first, as in TS5.
 pub fn prepare_serializers(fw: &FwInstance, cx: &mut Cx<'_>, groups: &[(P<Node>, Vec<SerializerSite>)]) {
     let mut built: Vec<Group> = Vec::new();
+    let mut calls: Vec<Vec<PreparedCall>> = Vec::new();
     for (_, sites) in groups {
         let mut hoisted = Vec::new();
         let mut objects = Vec::new();
+        let mut group_calls = Vec::new();
         for site in sites {
-            let written = written_type_argument(site.node);
-            let result = run(fw, cx, site.node, |gn| {
-                let value = gn.unwrap_promise(site.ty);
-                let versioned = site.version.map(|version| (version, gn.serializer_name(written, value)));
-                let shape = gn.spell(written, value)?;
-                gn.build_serializer(shape, versioned)
-            });
-            match result {
-                Ok((object, more)) => {
-                    hoisted.extend(more);
-                    objects.push((site.node, site.ty, Some(object)));
+            match &site.kind {
+                SiteKind::Serializer { version } => {
+                    let written = written_type_argument(site.node);
+                    let result = run(fw, cx, site.node, |gn| {
+                        let value = gn.unwrap_promise(site.ty);
+                        let versioned = version.map(|version| (version, gn.serializer_name(written, value)));
+                        let shape = gn.spell(written, value)?;
+                        gn.build_serializer(shape, versioned)
+                    });
+                    match result {
+                        Ok((object, more)) => {
+                            hoisted.extend(more);
+                            objects.push((site.node, site.ty, ValueTag::Serializer, Some(object)));
+                        }
+                        Err(_) => objects.push((site.node, site.ty, ValueTag::Serializer, None)),
+                    }
                 }
-                Err(_) => objects.push((site.node, site.ty, None)),
+                SiteKind::Decoder { result } => {
+                    let tag = if *result { ValueTag::ResultDecoder } else { ValueTag::Decoder };
+                    match run(fw, cx, site.node, |gn| decoder(gn, site.node, site.ty, *result)) {
+                        Ok((decoder, more)) => {
+                            hoisted.extend(more);
+                            objects.push((site.node, site.ty, tag, decoder));
+                        }
+                        Err(_) => objects.push((site.node, site.ty, tag, None)),
+                    }
+                }
+                SiteKind::Call(shape) => {
+                    if let Ok((call, more)) =
+                        run(fw, cx, site.node, |gn| crate::networking::calls::build(gn, site.node, shape))
+                    {
+                        hoisted.extend(more);
+                        group_calls.push((site.node, Rc::new(RefCell::new(call))));
+                    }
+                }
             }
         }
         built.push(Group { hoisted, objects, named: 0 });
+        calls.push(group_calls);
     }
 
     let mut state = fw.serializer.borrow_mut();
     let state = &mut *state;
     let Some(generator) = state.generator.as_mut() else { return };
-    // The printer named the declarations of the file's top-level statements, the hoisted ones included, before it
-    // printed anything; the rest of each root statement's code it named as it printed it.
+    let file = cx.file().source.as_node();
+    // The printer named the declarations of the file's top-level statements, the hoisted ones and the locals the
+    // file's own call sites put ahead of their statements included, before it printed anything; the rest of each
+    // root statement's code it named as it printed it.
     let mut namer = lower::Namer { ids: &generator.ids, names: &mut generator.names, ts_names: &mut state.names };
-    for group in &built {
+    for (group, group_calls) in built.iter().zip(&calls) {
         namer.generate_top(cx, &group.hoisted);
+        for (_, call) in group_calls {
+            let call = call.borrow();
+            if call.placement.ahead_of_statement() && call.naming_scope == file {
+                call.generate_declarations(&mut namer, cx);
+            }
+        }
     }
-    for (index, group) in built.iter().enumerate() {
+    state.entered.insert(file);
+    for (index, (group, group_calls)) in built.iter().zip(calls).enumerate() {
         state.group_of_statement.insert(groups[index].0, index);
         for (node, ..) in &group.objects {
             state.group_of.insert(*node, index);
+        }
+        for (node, call) in group_calls {
+            state.group_of.insert(node, index);
+            let scope = {
+                let call = call.borrow();
+                call.placement.ahead_of_statement().then_some(call.naming_scope)
+            };
+            if let Some(scope) = scope
+                && scope != file
+            {
+                state.scope_calls.entry(scope).or_default().push(node);
+            }
+            state.calls.insert(node, call);
         }
     }
     state.groups_done = 0;
     state.groups = built;
 }
 
-/// At a Flamework hook on `node` (every call and class hook runs it first): names and lowers what the serializers of
-/// `node`'s root statement hoisted, and of the root statements before it, unless done. TypeScript's printer printed a
+/// At a Flamework hook on `node` (every call and class hook runs it first): names and lowers what the sites of
+/// `node`'s root statement hoisted, and of the root statements before it, unless done, and names the locals the call
+/// sites of each function around `node` put ahead of their statements, unless done. TypeScript's printer printed a
 /// root statement's hoisted code ahead of the statement, so it named it before anything a hook of the statement
-/// made (a guard's locals, say).
+/// made (a guard's locals, say), and it named a function body's declarations when it began to print the body.
 pub fn enter_statement(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>) {
     let mut statement = node;
+    let mut scopes = Vec::new();
     while let Some(parent) = statement.parent()
         && parent.kind() != SyntaxKind::SourceFile
     {
+        if tsrs_ast::is_function_like(Some(parent))
+            || parent.kind() == SyntaxKind::ClassStaticBlockDeclaration
+            || parent.kind() == SyntaxKind::CallExpression
+        {
+            scopes.push(parent);
+        }
         statement = parent;
     }
     let group = fw.serializer.borrow().group_of_statement.get(&statement).copied();
     if let Some(group) = group {
         finish_hoists_through(fw, cx, group);
     }
+    // Outermost first, as the printer enters them: a function's body, or the function a call site's packing is
+    // wrapped in, whose locals print ahead of anything in the call (its target and arguments).
+    for &scope in scopes.iter().rev() {
+        if scope.kind() == SyntaxKind::CallExpression {
+            enter_wrapped_call(fw, cx, scope);
+        } else {
+            enter_function(fw, cx, scope);
+        }
+    }
+}
+
+/// Names the locals of a call site whose packing is wrapped in a function of its own (or in an optional chain's nil
+/// check), once: the printer named them when it began the function, ahead of the call's target and arguments, which
+/// the compiler may compile before the call's own hook (the target of `f().x.fire(…)`).
+fn enter_wrapped_call(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>) {
+    let mut state = fw.serializer.borrow_mut();
+    let state = &mut *state;
+    let Some(call) = state.calls.get(&node) else { return };
+    let call = call.borrow();
+    if call.placement.ahead_of_statement() {
+        return;
+    }
+    let Some(generator) = state.generator.as_mut() else { return };
+    let mut namer = lower::Namer { ids: &generator.ids, names: &mut generator.names, ts_names: &mut state.names };
+    call.generate_declarations(&mut namer, cx);
+}
+
+/// Names the locals of the call sites whose packing lands ahead of a statement of `function`'s body (and of the
+/// blocks in it), once.
+fn enter_function(fw: &FwInstance, cx: &mut Cx<'_>, function: P<Node>) {
+    let mut state = fw.serializer.borrow_mut();
+    let state = &mut *state;
+    if !state.entered.insert(function) {
+        return;
+    }
+    let Some(nodes) = state.scope_calls.get(&function) else { return };
+    let Some(generator) = state.generator.as_mut() else { return };
+    let mut namer = lower::Namer { ids: &generator.ids, names: &mut generator.names, ts_names: &mut state.names };
+    for node in nodes {
+        if let Some(call) = state.calls.get(node) {
+            call.borrow().generate_declarations(&mut namer, cx);
+        }
+    }
 }
 
 /// Names and lowers the hoisted statements of the prepared root statements up to `last` (in file order). They wait
-/// in `pending_hoists` for each statement's first site.
+/// in `pending_hoists` for each group's first site that is lowered.
 fn finish_hoists_through(fw: &FwInstance, cx: &mut Cx<'_>, last: usize) {
     let mut state = fw.serializer.borrow_mut();
     let state = &mut *state;
     let Some(generator) = state.generator.as_mut() else { return };
     while state.groups_done <= last && state.groups_done < state.groups.len() {
-        let group = &mut state.groups[state.groups_done];
+        let index = state.groups_done;
+        let group = &mut state.groups[index];
         state.groups_done += 1;
         let hoisted = std::mem::take(&mut group.hoisted);
         {
@@ -707,23 +887,27 @@ fn finish_hoists_through(fw: &FwInstance, cx: &mut Cx<'_>, last: usize) {
         let mut temp = |hint: &str| cx.temp_id(hint);
         let mut lowerer = lower::Lowerer { ids: &generator.ids, names: &generator.names, temp: &mut temp };
         let top = lowerer.statements(&hoisted);
-        if let Some((first, ..)) = group.objects.first() {
-            state.pending_hoists.insert(*first, top);
+        if !top.is_empty() {
+            state.pending_hoists.insert(index, top);
         }
     }
 }
 
-/// Names and lowers the values of `group` up to its site (`node`, `ty`), in build order, unless done; they wait in
-/// `prepared` for their sites. A user macro's values print in build order, which its hook may not build them in
+/// Names and lowers the values of `group` up to its site (`node`, `ty`, `tag`), in build order, unless done; they wait
+/// in `prepared` for their sites. A user macro's values print in build order, which its hook may not build them in
 /// (`wrap<A>(wrap<B>(0))` asks for `A` first): asking for one names those before it too.
-fn name_values_through(fw: &FwInstance, cx: &mut Cx<'_>, group: usize, node: P<Node>, ty: P<Type>) {
+fn name_values_through(fw: &FwInstance, cx: &mut Cx<'_>, group: usize, node: P<Node>, ty: P<Type>, tag: ValueTag) {
     let mut state = fw.serializer.borrow_mut();
     let state = &mut *state;
     let Some(generator) = state.generator.as_mut() else { return };
     let group = &mut state.groups[group];
-    let Some(at) = group.objects[group.named..].iter().position(|(n, t, _)| *n == node && *t == ty) else { return };
+    let Some(at) =
+        group.objects[group.named..].iter().position(|(n, t, g, _)| *n == node && *t == ty && *g == tag)
+    else {
+        return;
+    };
     let through = group.named + at;
-    for (node, ty, object) in &group.objects[group.named..=through] {
+    for (node, ty, tag, object) in &group.objects[group.named..=through] {
         let value = match object {
             Some(object) => {
                 {
@@ -738,7 +922,7 @@ fn name_values_through(fw: &FwInstance, cx: &mut Cx<'_>, group: usize, node: P<N
             }
             None => rbxts_luau::create::nil(),
         };
-        state.prepared.entry(*node).or_default().push((*ty, value));
+        state.prepared.entry(*node).or_default().push((*ty, *tag, value));
     }
     group.named = through + 1;
 }
@@ -777,118 +961,84 @@ fn written_type_argument(node: P<Node>) -> Option<P<Node>> {
     node.type_arguments().first().copied()
 }
 
-/// The decoder for an argument list (`network-decoder`): `nil` when the list carries nothing.
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-pub fn build_decoder(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, ty: P<Type>) -> PResult<LuauExpr> {
-    let (decoder, hoisted) = run(fw, cx, node, |gn| {
-        let list = gn.list_of(ty, None)?;
-        gn.build_decoder(list)
-    })?;
-    finish_optional(fw, cx, hoisted, decoder)
+/// `buildDecoderFromType` / `buildResultDecoderFromType`: the decoder for an argument list (`ty` its tuple), or with
+/// `result` for a function type's result; `None` when it carries nothing.
+fn decoder(gn: &mut Gen<'_, '_, '_>, node: P<Node>, ty: P<Type>, result: bool) -> GResult<Option<E>> {
+    let list = if result { gn.result_of(ty, node)? } else { gn.list_of(ty, None)? };
+    gn.build_decoder(list)
 }
 
-/// The decoder for a function type's result (`network-result-decoder`): `nil` when it carries nothing.
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-pub fn build_result_decoder(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, function: P<Type>) -> PResult<LuauExpr> {
-    let (decoder, hoisted) = run(fw, cx, node, |gn| {
-        let list = gn.result_of(function, node)?;
-        gn.build_decoder(list)
-    })?;
-    finish_optional(fw, cx, hoisted, decoder)
-}
-
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-fn finish_optional(fw: &FwInstance, cx: &mut Cx<'_>, hoisted: Vec<S>, value: Option<E>) -> PResult<LuauExpr> {
-    let expressions: Vec<&E> = value.iter().collect();
+/// The `network-decoder` intrinsic (`network-result-decoder` with `result`): the decoder, or `nil` when the list
+/// carries nothing.
+pub fn build_decoder(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, ty: P<Type>, result: bool) -> PResult<LuauExpr> {
+    let tag = if result { ValueTag::ResultDecoder } else { ValueTag::Decoder };
+    if let Some(prepared) = take_prepared(fw, cx, node, ty, tag) {
+        return Ok(prepared);
+    }
+    let (decoder, hoisted) = run(fw, cx, node, |gn| decoder(gn, node, ty, result))?;
+    let expressions: Vec<&E> = decoder.iter().collect();
     let (top, _, mut values) = lower_output(fw, cx, &hoisted, &[], &expressions);
     cx.insert_before_root_statement(top);
     Ok(if values.is_empty() { rbxts_luau::create::nil() } else { values.remove(0) })
 }
 
-/// The values a call site packs: one by one, or the table a spread made of them.
-#[derive(Debug, Clone)]
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-pub enum Values {
-    /// Each argument's value (an identifier or a literal; read more than once). `parameter` flags the ones that
-    /// are parameters of the function around the site.
-    List(Vec<(LuauExpr, bool)>),
-    Table(LuauExpr),
-}
-
-/// A call site's packing: statements to run, then the payload and blob list, when the list carries anything.
-#[derive(Debug, Clone)]
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-pub struct InlineEncoding {
-    pub statements: Vec<LuauStmt>,
-    pub payload: Option<LuauExpr>,
-    pub blobs: Option<LuauExpr>,
-}
-
-/// Packs an argument list (`buildInlineEncoding`): `ty` is the member's `_flamework_send` tuple.
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-pub fn encode_list(
+/// A networking call site's code ([`crate::networking::calls`]): the one built when the file began (with what its
+/// root statement hoisted placed), or one built now, whose hoisted statements are placed now. The flag says which.
+pub(crate) fn call_site(
     fw: &FwInstance,
     cx: &mut Cx<'_>,
     node: P<Node>,
-    ty: P<Type>,
-    values: Values,
-    site: EncodingSite,
-) -> PResult<InlineEncoding> {
-    let (encoding, hoisted) = run(fw, cx, node, |gn| {
-        let list = gn.list_of(ty, None)?;
-        let values = gn.external_values(values);
-        gn.encode_elements(list, values, site)
-    })?;
-    finish_encoding(fw, cx, hoisted, encoding)
-}
-
-/// Packs a function's result as a one-element list (`buildInlineResultEncoding`).
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-pub fn encode_result(
-    fw: &FwInstance,
-    cx: &mut Cx<'_>,
-    node: P<Node>,
-    function: P<Type>,
-    value: LuauExpr,
-    is_parameter: bool,
-    name: Option<String>,
-) -> PResult<InlineEncoding> {
-    let (encoding, hoisted) = run(fw, cx, node, |gn| {
-        let list = gn.result_of(function, node)?;
-        let values = gn.external_values(Values::List(vec![(value, is_parameter)]));
-        gn.encode_elements(list, values, EncodingSite { name, result: true, outer: 0 })
-    })?;
-    finish_encoding(fw, cx, hoisted, encoding)
-}
-
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-fn finish_encoding(fw: &FwInstance, cx: &mut Cx<'_>, hoisted: Vec<S>, encoding: codegen::Encoding) -> PResult<InlineEncoding> {
-    let mut expressions = Vec::new();
-    let payload = encoding.payload.map(ir::E::Id);
-    let blobs = encoding.blobs.map(ir::E::Id);
-    if let Some(p) = &payload {
-        expressions.push(p);
+    shape: &CallShape,
+) -> PResult<(Rc<RefCell<BuiltCall>>, bool)> {
+    let (prepared, group) = {
+        let state = fw.serializer.borrow();
+        (state.calls.get(&node).cloned(), state.group_of.get(&node).copied())
+    };
+    if let Some(prepared) = prepared {
+        if let Some(group) = group {
+            finish_hoists_through(fw, cx, group);
+            flush_hoists(fw, cx, group);
+        }
+        return Ok((prepared, true));
     }
-    if let Some(b) = &blobs {
-        expressions.push(b);
-    }
-    let (top, statements, mut values) = lower_output(fw, cx, &hoisted, &encoding.statements, &expressions);
+    let (call, hoisted) = run(fw, cx, node, |gn| crate::networking::calls::build(gn, node, shape))?;
+    let (top, ..) = lower_output(fw, cx, &hoisted, &[], &[]);
     cx.insert_before_root_statement(top);
-    let payload = payload.map(|_| values.remove(0));
-    let blobs = blobs.map(|_| values.remove(0));
-    Ok(InlineEncoding { statements, payload, blobs })
+    Ok((Rc::new(RefCell::new(call)), false))
+}
+
+/// Runs `f` with the file's namer.
+pub(crate) fn with_namer<T>(fw: &FwInstance, f: impl FnOnce(&mut lower::Namer<'_>) -> T) -> T {
+    let mut state = fw.serializer.borrow_mut();
+    let state = &mut *state;
+    let generator = state.generator.as_mut().expect("a generator");
+    let mut namer = lower::Namer { ids: &generator.ids, names: &mut generator.names, ts_names: &mut state.names };
+    f(&mut namer)
+}
+
+/// Runs `f` with the file's lowerer (what it lowers is named).
+pub(crate) fn with_lowerer<T>(fw: &FwInstance, cx: &mut Cx<'_>, f: impl FnOnce(&mut lower::Lowerer<'_>) -> T) -> T {
+    let state = fw.serializer.borrow();
+    let generator = state.generator.as_ref().expect("a generator");
+    let mut temp = |hint: &str| cx.temp_id(hint);
+    let mut lowerer = lower::Lowerer { ids: &generator.ids, names: &generator.names, temp: &mut temp };
+    f(&mut lowerer)
 }
 
 /// `packingKey`: a list's wire key (a function type's result's with `result`).
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
 pub fn packing_key(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, ty: P<Type>, result: bool) -> PResult<String> {
-    let (key, hoisted) = run(fw, cx, node, |gn| {
-        let list = if result { gn.result_of(ty, node)? } else { gn.list_of(ty, None)? };
-        gn.list_key(list)
-    })?;
+    let (key, hoisted) = run(fw, cx, node, |gn| gn.packing_key(node, ty, result))?;
     let (top, _, _) = lower_output(fw, cx, &hoisted, &[], &[]);
     cx.insert_before_root_statement(top);
     Ok(key)
+}
+
+impl Gen<'_, '_, '_> {
+    /// `packingKey(type, result)`.
+    pub(crate) fn packing_key(&mut self, node: P<Node>, ty: P<Type>, result: bool) -> GResult<String> {
+        let list = if result { self.result_of(ty, node)? } else { self.list_of(ty, None)? };
+        self.list_key(list)
+    }
 }
 
 /// `checkSerializerOutput`, at the end of a file: every field of the file's table the code called has its

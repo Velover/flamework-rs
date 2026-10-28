@@ -10,8 +10,8 @@ compiled in, the binary a Flamework project builds with.
   Flamework is on for a project whose tsconfig lists `@flamework-experimental/transformer` in
   `compilerOptions.plugins`.
 
-**Status:** work in progress, provided as is. A later milestone (networking) is still missing; a macro call that needs
-it compiles as a plain call, with a warning.
+**Status:** work in progress, provided as is. Every part of the TS transformer is ported, networking included; where
+the output may still differ, see [Known limitations](#known-limitations).
 
 **Licence:** MIT (`LICENSE`). Parts are ports of Flamework, hashids, uuid, glob, minimatch and brace-expansion; their
 notices are in `THIRD-PARTY-NOTICES.md`.
@@ -105,3 +105,37 @@ Where flamework-rs's output may differ from Flamework's TS transformer (TypeScri
   or a user key `"__@zeta@1"` against a real `[zeta]`) are ordered by ids that differ between the compilers. TS5's own
   order there depends on its global symbol counter, so it can change with unrelated edits; give such unions a written
   order (a type alias of the union) instead.
+
+Where it differs from TS5's output in shape only, with the same behaviour:
+
+- **The order of a network's members.** The keys of a mapped type over `keyof T` (`incomingIds`, `outgoingIds`,
+  `namespaceIds`, and the decoders built for them) are listed by a key of each, where TS5 lists them in the order its
+  checker first made their literal types, which `keyof` does not fix (it shifts with unrelated edits). The arrays hold
+  the members' names and remotes are matched by name, so their order carries no meaning: a server and a client built
+  by the two compilers work together. The order the codecs are generated in and their names follow it.
+- **Packed sends in an optional chain** (`events?.alpha.fire(x)`): the packing goes inside the compiler's nil check,
+  where TS5 wraps the call in a function that checks the chain's start, packs, and then evaluates the chain again.
+  The behaviour is the same unless an argument changes what the chain starts from (`box.ev?.alpha.fire(f())` where
+  `f` assigns `box.ev`): TS5 sends through the new value, flamework-rs through the one read before the arguments.
+- **A returned send past its function's budget of locals** (`return events.alpha.fire(x)` in a function that already
+  holds many of Flamework's locals): the call and its packing go in a function, where TS5 puts the `return` statement
+  in a block of its own with the packing.
+- **A send in a `for` loop's incrementor** (`for (let i = 0; i < n; events.alpha.fire(i), i++)`): TS5's packing
+  function makes roblox-ts see the loop variable captured and copy it per iteration (`local i = _i` … `_i = i`);
+  flamework-rs's packing is not seen as a closure, so the loop has no copies. The function is called where it is made,
+  so nothing can see the difference.
+
+Where it differs on purpose:
+
+- **Obfuscated keys through an optional chain** (`maybe?.alpha.fire(x)`, `f()?.ns.leaf.fire(x)` with
+  `transformer.obfuscation`): flamework-rs obfuscates the member name as it does outside a chain. TS5 reads the key
+  obfuscation marker off the receiver's type as it is, which may be `undefined` there, so it leaves the name as
+  written and the send reaches no remote.
+- **`middleware` written as a shorthand property, a method or an accessor** (`createServer({ middleware })`): a build
+  error, as for any value that is not an object literal. TS5 fails an internal assertion.
+
+What flamework-rs refuses that TS5 builds:
+
+- **Spreading a map, an iterable function or a generator into a packed call's arguments** (`events.list.fire(...map)`):
+  arrays, tuples, strings and sets are spread as roblox-ts spreads them; the rest is a build error. Spread the values
+  into an array first (`[...map]`).

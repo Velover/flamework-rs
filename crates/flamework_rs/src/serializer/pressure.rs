@@ -85,7 +85,10 @@ fn skip_outer(e: &E) -> &E {
 
 /// `isPrimitive`.
 fn is_primitive(e: &E) -> bool {
-    matches!(e, E::Str(_) | E::Num(_) | E::Bool(_) | E::Undefined)
+    match e {
+        E::Ext(value) => value.literal.is_some(),
+        _ => matches!(e, E::Str(_) | E::Num(_) | E::Bool(_) | E::Undefined),
+    }
 }
 
 /// The text of an identifier node.
@@ -93,7 +96,8 @@ fn identifier<'e>(ids: &Ids, e: &'e E) -> Option<std::borrow::Cow<'e, str>> {
     match e {
         E::Id(id) => Some(std::borrow::Cow::Owned(ids.hint(*id).to_owned())),
         E::Global(name) => Some(std::borrow::Cow::Borrowed(name.as_str())),
-        E::Ext(..) | E::Guard(_) => Some(std::borrow::Cow::Borrowed("$value")),
+        E::Ext(value) if value.literal.is_some() => None,
+        E::Ext(_) | E::Guard(_) => Some(std::borrow::Cow::Borrowed("$value")),
         _ => None,
     }
 }

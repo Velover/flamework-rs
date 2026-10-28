@@ -251,10 +251,10 @@ fn unions_of_different_macros_are_refused() {
     assert!(errors[0].contains("carry different Flamework macros"), "{errors:#?}");
 }
 
-/// Later milestones: a network intrinsic (F5) is declined, and listed in the build's warning; a serializer (F4) and a
-/// guard (F3) are generated.
+/// The later milestones' intrinsics are all built, none left to a later milestone: a network decoder (F5), a
+/// serializer (F4) and a guard (F3).
 #[test]
-fn later_milestones_are_loud() {
+fn later_milestones_are_built() {
     let Some(project) = Project::new(FIXTURE, "later") else { return };
     project.write(
         "src/shared/later.ts",
@@ -262,9 +262,10 @@ fn later_milestones_are_loud() {
     );
     let report = project.build_with(flamework_with_fixture_macros());
     assert_clean(&report);
-    let warnings = report.warnings.join("\n");
-    assert!(warnings.contains("1 Flamework macro call(s) need features rbxts-rs does not have yet (F5: 1)"), "{warnings}");
-    assert!(warnings.contains("the network-decoder intrinsic (1)"), "{warnings}");
+    assert!(report.warnings.iter().all(|w| !w.contains("need features")), "{:?}", report.warnings);
+    let decoder = luau(&report, "shared/later.luau");
+    // Packed only under `networking.serialization`, which this fixture leaves off: nil, as TS5 builds it.
+    assert!(decoder.contains("local d = decoder(nil)"), "{decoder}");
 
     project.write(
         "src/shared/serialized.ts",
@@ -280,7 +281,7 @@ fn later_milestones_are_loud() {
     assert!(guarded.contains("Flamework.createGuard(t.string)"), "{guarded}");
     let serialized = luau(&report, "shared/serialized.luau");
     assert!(serialized.contains("buffer.writef64(buf, 0, v.a)"), "{serialized}");
-    assert!(report.warnings.join("\n").contains("(F5: 1)"), "{:?}", report.warnings);
+    assert!(report.warnings.iter().all(|w| !w.contains("need features")), "{:?}", report.warnings);
 }
 
 /// `tuple-guards` (F3's `tuple_guards`): `{ { guards }, rest or nil, { after }? }`, as TS5 builds it.

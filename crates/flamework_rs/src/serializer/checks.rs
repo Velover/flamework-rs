@@ -92,6 +92,11 @@ pub(crate) fn primitive_type(kind: &Kind) -> Option<String> {
 }
 
 fn constant_primitive(value: &E) -> Option<String> {
+    if let E::Ext(ext) = value
+        && let Some(literal) = ext.as_literal()
+    {
+        return constant_primitive(&literal);
+    }
     Some(match value {
         E::Str(_) => "string".into(),
         E::Num(_) | E::Neg(_) => "number".into(),
@@ -1171,7 +1176,7 @@ impl Gen<'_, '_, '_> {
     pub(crate) fn is_parameter_reference(&self, value: &E) -> bool {
         match value {
             E::Id(id) => self.g.parameters.contains(id),
-            E::Ext(_, parameter) => *parameter,
+            E::Ext(value) => value.parameter,
             _ => false,
         }
     }
@@ -1180,6 +1185,7 @@ impl Gen<'_, '_, '_> {
     pub(crate) fn type_of_value(&self, value: &E) -> Ty {
         match value {
             E::Id(id) => self.g.ids.ty(*id),
+            E::Ext(ext) if ext.literal.is_some() => self.type_of_value(&ext.as_literal().expect("a literal")),
             E::As(_, ty) => *ty,
             E::Paren(inner) => self.type_of_value(inner),
             E::Str(_) | E::Template(..) => Ty::String,
@@ -1204,6 +1210,11 @@ impl Gen<'_, '_, '_> {
 pub(crate) fn literal_type(e: &E) -> Option<&'static str> {
     if e.literal_number().is_some() {
         return Some("number");
+    }
+    if let E::Ext(ext) = e
+        && let Some(literal) = ext.as_literal()
+    {
+        return literal_type(&literal);
     }
     match e {
         E::Str(_) => Some("string"),

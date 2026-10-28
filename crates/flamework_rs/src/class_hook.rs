@@ -12,16 +12,13 @@
 //! [`crate::guards::guard_for`]; a `Modding.Generic<T, "guard">` in a `Modding.Injectable` dependency's metadata is
 //! built as any user macro's ([`crate::guards::guard_for_with_dedup`]).
 //!
-//! Not yet: dependency metadata that needs a later milestone (the serializer F4, networking F5). A class that requests
-//! it gets an error naming the milestone, rather than metadata that silently lacks it. (Components, F6, need nothing
-//! here: their config is the decorator's, [`crate::components::config`].)
 
 use rbxts_luau::create;
 use rbxts_plugin::ts::{Kind, Node, P, Type};
 use rbxts_plugin::{ClassSite, Cx, LuauExpr, LuauStmt, PResult, PluginDiagnostic, synthesized_string};
 use tsrs_ast::SymbolFlags;
 
-use crate::macros::{Analysis, Builder, UserMacro};
+use crate::macros::{Analysis, Builder};
 use crate::metadata::{NodeMetadata, get_symbol, implements_entries};
 use crate::packages::{COMPONENTS_PACKAGE, CORE_PACKAGE};
 use crate::plugin::FwInstance;
@@ -227,11 +224,6 @@ fn parameter_fields(
 /// metadata being the user macros of a `Modding.Injectable<{ metadata: [...] }>` dependency.
 fn dependency_metadata(fw: &FwInstance, cx: &mut Cx<'_>, trace: P<Node>, ty: P<Type>) -> PResult<LuauExpr> {
     let metadata = Analysis { fw, node: trace }.injectable_metadata(cx, ty)?;
-    if let Some(later) = metadata.as_ref().and_then(|items| items.iter().find_map(UserMacro::later)) {
-        let what = format!("the metadata of a Modding.Injectable dependency ({})", later.what);
-        let feature = if later.milestone == "F4" { "the serializer" } else { "networking" };
-        return Err(unported_error(cx, trace, &what, feature, later.milestone));
-    }
     let key = fw.file.borrow().current_key.clone();
     Builder { fw, node: trace, key }.dependency(cx, ty, false, metadata.as_deref())
 }
@@ -272,20 +264,6 @@ fn method_fields(fw: &FwInstance, cx: &mut Cx<'_>, method: P<Node>, metadata: &N
         fields.push(("flamework:return_guard", crate::guards::guard_for(cx, fw.shared.guard_config(), at, return_type)?));
     }
     Ok(fields)
-}
-
-/// The error for metadata a later milestone brings.
-fn unported_error(
-    cx: &mut Cx<'_>,
-    node: P<Node>,
-    what: &str,
-    feature: &str,
-    milestone: &str,
-) -> rbxts_plugin::Abort {
-    cx.error(
-        node,
-        format!("{what} needs {feature}, which rbxts-rs's Flamework does not have yet ({milestone})."),
-    )
 }
 
 /// `isModuleLevel`: declared at the top level of the file, or of a namespace in it.

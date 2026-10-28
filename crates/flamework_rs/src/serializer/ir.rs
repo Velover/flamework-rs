@@ -206,9 +206,8 @@ pub enum E {
     Id(Id),
     /// A plain identifier: a global (`buffer`, `math`, `typeIs`, `Enum`, …).
     Global(String),
-    /// A value compiled elsewhere (a call site's argument), read like an identifier.
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-    Ext(rbxts_plugin::LuauExpr, bool),
+    /// A value compiled elsewhere (a call site's argument): read like an identifier, or a literal as written.
+    Ext(ExtValue),
     /// A `t` guard (F3's), its locals named where it prints ([`Guard`]).
     Guard(std::rc::Rc<Guard>),
     Num(f64),
@@ -231,6 +230,47 @@ pub enum E {
     Object(Vec<(Key, E)>),
     Array(Vec<E>),
     New(String, Vec<E>),
+}
+
+/// A call site's value ([`E::Ext`]): its Luau, filled in when the site is compiled (the generator builds the site's
+/// code before the arguments are compiled, see `crate::networking`), and what the TS generator saw of the node.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExtValue {
+    pub value: std::rc::Rc<std::cell::RefCell<rbxts_plugin::LuauExpr>>,
+    /// An identifier that names a parameter of the function around the site (`isParameterReference`).
+    pub parameter: bool,
+    /// The value of a literal (a string, a number, `true` or `false` as written), which the TS generator read as a
+    /// literal (its checks fold it), not as an identifier; the Luau stays the literal as written.
+    pub literal: Option<ExtLiteral>,
+}
+
+/// A call site's literal value ([`ExtValue::literal`]).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ExtLiteral {
+    Num(f64),
+    Str(String),
+    Bool(bool),
+}
+
+impl ExtValue {
+    /// A value to be filled in, `nil` until then.
+    pub fn new(parameter: bool, literal: Option<ExtLiteral>) -> ExtValue {
+        ExtValue { value: std::rc::Rc::new(std::cell::RefCell::new(rbxts_luau::create::nil())), parameter, literal }
+    }
+
+
+    pub fn set(&self, value: rbxts_plugin::LuauExpr) {
+        *self.value.borrow_mut() = value;
+    }
+
+    /// The literal as the generator's own literal node, for what reads its value.
+    pub fn as_literal(&self) -> Option<E> {
+        Some(match self.literal.as_ref()? {
+            ExtLiteral::Num(n) => E::Num(*n),
+            ExtLiteral::Str(s) => E::Str(s.clone()),
+            ExtLiteral::Bool(b) => E::Bool(*b),
+        })
+    }
 }
 
 /// What a declaration binds.
@@ -486,7 +526,10 @@ pub fn if_stmt(condition: E, then: Vec<S>, otherwise: Option<Else>) -> S {
 impl E {
     /// `f.is.identifier`: an identifier node (a generated one, a global, `undefined`, or a call site's value).
     pub fn is_identifier(&self) -> bool {
-        matches!(self, E::Id(_) | E::Global(_) | E::Ext(..) | E::Guard(_) | E::Undefined)
+        match self {
+            E::Ext(value) => value.literal.is_none(),
+            _ => matches!(self, E::Id(_) | E::Global(_) | E::Guard(_) | E::Undefined),
+        }
     }
 
     /// `isNilLiteral`: the identifier `undefined`.
@@ -496,13 +539,17 @@ impl E {
 
     /// `isLiteral`: a string, number (not a negative one: that is a prefix expression), boolean or `undefined`.
     pub fn is_literal(&self) -> bool {
-        matches!(self, E::Str(_) | E::Num(_) | E::Bool(_) | E::Undefined)
+        match self {
+            E::Ext(value) => value.literal.is_some(),
+            _ => matches!(self, E::Str(_) | E::Num(_) | E::Bool(_) | E::Undefined),
+        }
     }
 
     /// `literalNumber`: `7` or `-7`.
     pub fn literal_number(&self) -> Option<f64> {
         match self {
             E::Num(n) => Some(*n),
+            E::Ext(ExtValue { literal: Some(ExtLiteral::Num(n)), .. }) => Some(*n),
             E::Neg(inner) => match &**inner {
                 E::Num(n) => Some(-*n),
                 _ => None,

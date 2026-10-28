@@ -7,8 +7,8 @@
 //! - [`FwInstance`], one per checker: the class hook ([`crate::class_hook`]), the call hook for user macros
 //!   ([`crate::macros`]), and the assignment and property-key hooks of components ([`crate::components`]), with this
 //!   checker's metadata and decorator caches.
-//! - [`FwFilePart`], one per file: the ids it asked for first, its glob and path uses, and the macro sites it left to
-//!   later milestones. Only parts cross threads, so the output is the same for any checker count (DESIGN §10.4).
+//! - [`FwFilePart`], one per file: the ids it asked for first, its glob and path uses, and the variables it inlined.
+//!   Only parts cross threads, so the output is the same for any checker count (DESIGN §10.4).
 //!
 //! The persistent state ([`FwState`]) is the last committed `flamework.build`: a clean build starts a new one, every
 //! other build reuses it (its id table, salt and seeds), unless the id mode or the code-shaping config changed, when
@@ -75,17 +75,6 @@ pub enum PathEvent {
     Path(PathUse),
 }
 
-/// A macro call site left to a later milestone, declined (roblox-ts compiles it as a plain call), or class metadata
-/// left out. Reported once per build, at the first site.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Unported {
-    /// The callee and what it needs (`Dependency: a Modding.Generic<T, "dependency"> parameter`).
-    pub what: String,
-    /// The milestone that brings it (`F2` …).
-    pub milestone: &'static str,
-    pub pos: rbxts_plugin::Utf16Pos,
-}
-
 /// What one file contributes to `finish` (DESIGN §10.1). Owned data only: no handles, no `FileIndex`. Persisted for
 /// incremental builds by [`crate::part_codec`] (bump its format version when a field changes).
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -97,7 +86,6 @@ pub struct FwFilePart {
     /// The late keys the file used (internal ids), for the late-string contract.
     pub late_keys: Vec<String>,
     pub events: Vec<PathEvent>,
-    pub unported: Vec<Unported>,
     /// The variables `Flamework.env` inlined, in the TS transformer's order: `(name, hash of the value)`
     /// (`inputs.env` in `flamework.build`).
     pub env_inputs: Vec<(String, String)>,
@@ -120,6 +108,8 @@ pub(crate) struct FileState {
     pub macro_cache: HashMap<(String, P<rbxts_plugin::ts::Type>), LuauExpr>,
     /// The order key of whatever is asking for ids now (the class hook's class).
     pub current_key: OrderKey,
+    /// How many shuffles each macro call made (`crate::macros::shuffle`).
+    pub shuffles: HashMap<P<Node>, usize>,
     pub seq: usize,
 }
 
@@ -171,11 +161,6 @@ impl FwInstance {
         is_macro
     }
 
-    /// Records a site left to a later milestone.
-    pub(crate) fn unported(&self, cx: &Cx<'_>, node: P<Node>, what: String, milestone: &'static str) {
-        let pos = cx.utf16_pos(node);
-        self.file.borrow_mut().part.unported.push(Unported { what, milestone, pos });
-    }
 }
 
 impl Plugin for Flamework {
@@ -243,6 +228,8 @@ impl PluginInstance for FwInstance {
         // Components (F6): attribute setters and obfuscated keys.
         interest.assignments_by_receiver_symbol();
         interest.accesses_by_marker(crate::components::KEY_OBFUSCATION_MARKER, crate::components::TAG_KEY_OBFUSCATION);
+        // Networking (F5): sends and callbacks on packed members.
+        crate::networking::interest(interest);
     }
 
     fn classify_symbol(&self, cx: &mut Cx<'_>, symbol: P<Symbol>, role: SymbolRole) -> Option<Tag> {
@@ -268,10 +255,13 @@ impl PluginInstance for FwInstance {
     }
 
     fn call(&self, cx: &mut Cx<'_>, call: &CallSite, tag: Tag) -> PResult<Claim<LuauExpr>> {
-        if tag != TAG_MACRO {
-            return Ok(Claim::Decline);
+        match tag {
+            TAG_MACRO => crate::macros::user_macro(self, cx, call),
+            crate::networking::TAG_RECEIVER | crate::networking::TAG_CALLEE => {
+                crate::networking::calls::call_hook(self, cx, call)
+            }
+            _ => Ok(Claim::Decline),
         }
-        crate::macros::user_macro(self, cx, call)
     }
 
     fn property_key(&self, cx: &mut Cx<'_>, access: &AccessSite, tag: Tag) -> PResult<Claim<String>> {
@@ -291,6 +281,15 @@ impl PluginInstance for FwInstance {
     fn class(&self, cx: &mut Cx<'_>, class: &ClassSite) -> PResult<Vec<LuauStmt>> {
         crate::serializer::enter_statement(self, cx, class.node);
         crate::class_hook::class_metadata(self, cx, class)
+    }
+
+    /// `explainRemovedNetworkMarker`: a dropped networking marker's error names the marker replacing it.
+    fn explain_checker_diagnostic(
+        &self,
+        cx: &mut Cx<'_>,
+        diagnostic: P<rbxts_plugin::ts::Diagnostic>,
+    ) -> Option<rbxts_plugin::PluginDiagnostic> {
+        crate::networking::mode::explain_removed_marker(cx, diagnostic)
     }
 
     fn end_file(&self, cx: &mut Cx<'_>) -> PResult<FwFilePart> {

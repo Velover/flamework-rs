@@ -94,7 +94,6 @@ pub(crate) fn finish(
     let by_id: HashMap<&str, FileIndex> = parts.iter().map(|(i, p)| (p.file_id.as_str(), *i)).collect();
     warn_empty_globs(&info, &by_id, cx);
     warn_empty_paths(shared, &info, &by_id, cx);
-    warn_unported(parts, cx);
     Ok(())
 }
 
@@ -371,40 +370,4 @@ fn look_up(shared: &FwShared, cx: &mut FinishCx<'_>, base: &str, source_path: &s
         }
     }
     find_source_path(cx, base, source_path)
-}
-
-/// One warning for the macro sites and metadata left to later milestones, at the first one.
-fn warn_unported(parts: &[(FileIndex, &FwFilePart)], cx: &mut FinishCx<'_>) {
-    let mut by_milestone: BTreeMap<&str, usize> = BTreeMap::new();
-    let mut by_what: Vec<(&str, usize)> = Vec::new();
-    let mut first = None;
-    for (file, part) in parts {
-        for site in &part.unported {
-            *by_milestone.entry(site.milestone).or_default() += 1;
-            match by_what.iter_mut().find(|(what, _)| *what == site.what) {
-                Some(entry) => entry.1 += 1,
-                None => by_what.push((&site.what, 1)),
-            }
-            first.get_or_insert((*file, site));
-        }
-    }
-    let Some((file, site)) = first else { return };
-    let total: usize = by_milestone.values().sum();
-    let milestones: Vec<String> = by_milestone.iter().map(|(m, n)| format!("{m}: {n}")).collect();
-    // The most frequent first; equal counts in first-seen order.
-    by_what.sort_by_key(|entry| std::cmp::Reverse(entry.1));
-    let mut shown: Vec<String> = by_what.iter().take(5).map(|(what, n)| format!("{what} ({n})")).collect();
-    if by_what.len() > 5 {
-        shown.push(format!("{} more kinds", by_what.len() - 5));
-    }
-    cx.warn_at(
-        file,
-        site.pos,
-        &format!(
-            "{total} Flamework macro call(s) need features rbxts-rs does not have yet ({}); they compile as plain calls: {}",
-            milestones.join(", "),
-            shown.join("; ")
-        ),
-        Some("Their output is not what Flamework emits: do not run this build."),
-    );
 }

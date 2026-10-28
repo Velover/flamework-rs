@@ -96,6 +96,7 @@ pub(crate) fn print_literal(e: &E) -> String {
         E::Neg(inner) => format!("-{}", print_literal(inner)),
         E::Bool(true) => "true".into(),
         E::Bool(false) => "false".into(),
+        E::Ext(value) if value.literal.is_some() => print_literal(&value.as_literal().expect("a literal")),
         E::Undefined | E::Global(_) | E::Id(_) | E::Ext(..) | E::Guard(_) => "#80".into(),
         E::Prop(..) => "#212".into(),
         E::Elem(..) => "#213".into(),

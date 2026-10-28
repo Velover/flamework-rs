@@ -38,9 +38,9 @@
 //! chain. An inlined call followed by more of its chain (`maybe?.inlined<T>().size()`) fails TS5's type check of its
 //! output.
 //!
-//! **Later milestones.** The network intrinsics and `intrinsic-middleware` (F5) decline the call before anything is
-//! compiled, so roblox-ts compiles it as a plain call, and finish gives one warning naming every such site's
-//! milestone. The decision reads only the AST and types (a hook cannot decline after it compiled something).
+//! **Networking.** The `network-decoder` / `network-result-decoder` intrinsics are decoders built with the file's
+//! serializers ([`crate::serializer::build_decoder`]), `network-unreliable` reads the member's markers, and
+//! `intrinsic-middleware` obfuscates a network's middleware names ([`crate::networking::middleware`]).
 
 use rbxts_luau::create;
 use rbxts_plugin::ts::{Kind, Node, P, Symbol, Type};
@@ -109,8 +109,13 @@ pub(crate) enum Intrinsic {
     TupleGuards(P<Type>),
     /// `serializer`: `T`'s serializer.
     Serializer(P<Type>),
-    /// Brought by a later milestone.
-    Later { id: String, milestone: &'static str },
+    /// `network-decoder`: the decoder of the argument list `list` of the member `member` (named `key`), when it is
+    /// packed.
+    NetworkDecoder { list: P<Type>, member: Option<P<Type>>, key: Option<P<Type>> },
+    /// `network-result-decoder`: the decoder of the function type's result, when it is packed.
+    NetworkResultDecoder { function: P<Type>, key: Option<P<Type>> },
+    /// `network-unreliable`: `true` for a member declared unreliable.
+    NetworkUnreliable { member: Option<P<Type>>, key: Option<P<Type>> },
     /// An unusable intrinsic, with the TS transformer's message.
     Invalid(String),
 }
@@ -127,48 +132,80 @@ pub(crate) enum UserMacro {
     SharedRef(Box<UserMacro>),
 }
 
-/// A part of a macro that a later milestone brings.
-pub(crate) struct Later {
-    pub what: String,
-    pub milestone: &'static str,
-}
-
 impl UserMacro {
-    /// The first part (in build order) that a later milestone brings.
-    pub(crate) fn later(&self) -> Option<Later> {
+    /// The values in it that the file's serializers build ahead (`serializer`, and the network decoders of packed
+    /// members), in build order: shuffled as [`Builder`] shuffles them (`shuffles` counts the shuffles of the call
+    /// so far), a decoder only where the member is packed. `version` is the call's serializer version.
+    pub(crate) fn prepared_sites(
+        &self,
+        fw: &FwInstance,
+        cx: &mut Cx<'_>,
+        call: P<Node>,
+        version: Option<u32>,
+        shuffles: &mut usize,
+        out: &mut Vec<(P<Type>, crate::serializer::SiteKind)>,
+    ) {
+        use crate::serializer::SiteKind;
+        let mut each = |items: &mut dyn Iterator<Item = &UserMacro>, cx: &mut Cx<'_>, out: &mut Vec<_>| {
+            for item in items {
+                item.prepared_sites(fw, cx, call, version, shuffles, out);
+            }
+        };
         match self {
             UserMacro::Generic { kind: GenericKind::Dependency { metadata: Some(items), .. }, .. }
-            | UserMacro::Many(items) => items.iter().find_map(UserMacro::later),
-            UserMacro::Map(entries) => entries.iter().find_map(|(_, m)| m.later()),
-            UserMacro::SharedRef(inner) => inner.later(),
-            UserMacro::Intrinsic(Intrinsic::ObfuscateObject { inner, .. } | Intrinsic::ShuffleArray(inner)) => {
-                inner.later()
+            | UserMacro::Many(items) => each(&mut items.iter(), cx, out),
+            UserMacro::Map(entries) => each(&mut entries.iter().map(|(_, m)| m), cx, out),
+            UserMacro::SharedRef(inner) => inner.prepared_sites(fw, cx, call, version, shuffles, out),
+            UserMacro::Intrinsic(Intrinsic::ObfuscateObject { inner, .. }) => match &**inner {
+                UserMacro::Map(entries) => {
+                    let mut entries: Vec<&UserMacro> = entries.iter().map(|(_, m)| m).collect();
+                    shuffle(fw, cx, call, &mut entries, "obfuscate-obj", shuffles);
+                    for entry in entries {
+                        entry.prepared_sites(fw, cx, call, version, shuffles, out);
+                    }
+                }
+                inner => inner.prepared_sites(fw, cx, call, version, shuffles, out),
+            },
+            UserMacro::Intrinsic(Intrinsic::ShuffleArray(inner)) => match &**inner {
+                UserMacro::Many(items) => {
+                    let mut items: Vec<&UserMacro> = items.iter().collect();
+                    shuffle(fw, cx, call, &mut items, "shuffle-array", shuffles);
+                    for item in items {
+                        item.prepared_sites(fw, cx, call, version, shuffles, out);
+                    }
+                }
+                inner => inner.prepared_sites(fw, cx, call, version, shuffles, out),
+            },
+            UserMacro::Intrinsic(Intrinsic::Serializer(ty)) => out.push((*ty, SiteKind::Serializer { version })),
+            UserMacro::Intrinsic(Intrinsic::NetworkDecoder { list, member, key })
+                if crate::networking::mode::packed_member(fw, cx, *member, call, *key) == Some(true) =>
+            {
+                out.push((*list, SiteKind::Decoder { result: false }));
             }
-            UserMacro::Intrinsic(Intrinsic::Later { id, milestone }) => {
-                Some(Later { what: format!("the {id} intrinsic"), milestone })
+            UserMacro::Intrinsic(Intrinsic::NetworkResultDecoder { function, key })
+                if crate::networking::mode::packed_member(fw, cx, Some(*function), call, *key) == Some(true) =>
+            {
+                out.push((*function, SiteKind::Decoder { result: true }));
             }
-            _ => None,
-        }
-    }
-
-    /// The `T` of every `serializer` intrinsic in it, in build order.
-    pub(crate) fn serializer_types(&self, out: &mut Vec<P<Type>>) {
-        match self {
-            UserMacro::Generic { kind: GenericKind::Dependency { metadata: Some(items), .. }, .. }
-            | UserMacro::Many(items) => items.iter().for_each(|m| m.serializer_types(out)),
-            UserMacro::Map(entries) => entries.iter().for_each(|(_, m)| m.serializer_types(out)),
-            UserMacro::SharedRef(inner) => inner.serializer_types(out),
-            UserMacro::Intrinsic(Intrinsic::ObfuscateObject { inner, .. } | Intrinsic::ShuffleArray(inner)) => {
-                inner.serializer_types(out);
-            }
-            UserMacro::Intrinsic(Intrinsic::Serializer(ty)) => out.push(*ty),
             _ => {}
         }
     }
 }
 
-/// The parameter intrinsics a macro declaration can carry that later milestones bring.
-const LATER_PARAMETER_INTRINSICS: [(&str, &str); 1] = [("intrinsic-middleware", "F5")];
+/// `obfuscateArray` under obfuscation: a shuffle seeded by the build seed, the file, the call's place, what is
+/// shuffled and how many shuffles the call made before (DESIGN §10.4), so it is the same on every checker, and the
+/// same when the file's sites are prepared ([`UserMacro::prepared_sites`]) as when the call is built.
+pub(crate) fn shuffle<T>(fw: &FwInstance, cx: &Cx<'_>, call: P<Node>, items: &mut [T], context: &str, count: &mut usize) {
+    let shared = &fw.shared;
+    if shared.config.obfuscation != Some(true) {
+        return;
+    }
+    let Some(seed) = &shared.build_seed else { return };
+    *count += 1;
+    let offset = cx.utf16_pos(call).offset;
+    let file_id = shared.file_id(&cx.file().path);
+    crate::shuffle::shuffle(items, &format!("{}\0{file_id}\0{offset}\0{context}\0{count}", seed.as_str()));
+}
 
 /// The call hook for a callee classified as a user macro (`transformCallExpression` / `transformNewExpression` and
 /// `transformUserMacro`).
@@ -193,11 +230,11 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
     let Some(declaration) = signature.declaration() else { return Ok(Claim::Decline) };
     let metadata = fw.metadata(cx, declaration);
 
-    if let Some((key, milestone)) = LATER_PARAMETER_INTRINSICS.iter().find(|(key, _)| metadata.symbols(key).is_some()) {
-        let callee = macro_call_shape(cx, expression, false).0;
-        fw.unported(cx, expression, format!("{callee}: the {key} parameter intrinsic"), milestone);
-        return Ok(Claim::Decline);
-    }
+    // `intrinsic-middleware`: the middleware objects whose names are obfuscated (none without obfuscation).
+    let middleware = match metadata.symbols("intrinsic-middleware") {
+        Some(parameters) => crate::networking::middleware::targets(fw, cx, expression, signature, parameters)?,
+        None => Vec::new(),
+    };
 
     // What each parameter generates, decided from the types alone.
     let analysis = Analysis { fw, node: expression };
@@ -211,14 +248,6 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         if let Some(found) = analysis.of_union(cx, target)? {
             validate_dependency_target(fw, cx, expression, declaration, &found)?;
             parameters.push((index, found));
-        }
-    }
-
-    for (_, found) in &parameters {
-        if let Some(later) = found.later() {
-            let callee = macro_call_shape(cx, expression, false).0;
-            fw.unported(cx, expression, format!("{callee}: {}", later.what), later.milestone);
-            return Ok(Claim::Decline);
         }
     }
 
@@ -245,7 +274,7 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
     })
     .filter(|(_, indices)| !indices.is_empty());
 
-    if parameters.is_empty() && inline.is_none() && rewrite.is_none() && component.is_none() {
+    if parameters.is_empty() && inline.is_none() && rewrite.is_none() && component.is_none() && middleware.is_empty() {
         // Nothing to generate or change: the call as written, which is what roblox-ts compiles anyway.
         return Ok(Claim::Decline);
     }
@@ -289,6 +318,13 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         }
         values.sort_by_key(|(i, _)| *i);
     }
+
+    for (index, object) in middleware {
+        if !values.iter().any(|(i, _)| *i == index) {
+            values.push((index, crate::networking::middleware::compile(fw, cx, expression, object)?));
+        }
+    }
+    values.sort_by_key(|(i, _)| *i);
 
     if let Some(index) = inline {
         // `inlineMacroIntrinsic`: the call is the value of that parameter (the TS cast goes: Luau has none). The
@@ -651,6 +687,10 @@ pub(crate) fn prepare_file_serializers(fw: &FwInstance, cx: &mut Cx<'_>) {
 /// and each written one with the macro calls in it (`wrap<A>(wrap<B>(0))` builds `B` first); any other node's
 /// children in source order.
 fn collect_sites(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, out: &mut Vec<crate::serializer::SerializerSite>) {
+    // A call on a networking member: its arguments' sites, then its own packing.
+    if crate::networking::calls::collect(fw, cx, node, out, collect_sites) {
+        return;
+    }
     if matches!(node.kind(), Kind::CallExpression | Kind::NewExpression)
         && let Some(generated) = serializer_parameters(fw, cx, node)
     {
@@ -665,7 +705,11 @@ fn collect_sites(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, out: &mut Vec<
                 Some((_, types)) => {
                     // a call whose version fails is left to its hook, which reports the error
                     if let Ok(version) = version {
-                        out.extend(types.iter().map(|&ty| crate::serializer::SerializerSite { node, ty, version }));
+                        out.extend(types.iter().map(|(ty, kind)| crate::serializer::SerializerSite {
+                            node,
+                            ty: *ty,
+                            kind: kind.with_version(version),
+                        }));
                     }
                 }
                 None => {
@@ -683,22 +727,24 @@ fn collect_sites(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>, out: &mut Vec<
     });
 }
 
-/// The parameters of `call` whose generated values hold `serializer` intrinsics, with each one's `T`s in build order:
-/// `None` for a call with none, that is not a user macro, or that the hook declines (`super()`, a later milestone)
-/// or fails on.
-fn serializer_parameters(fw: &FwInstance, cx: &mut Cx<'_>, call: P<Node>) -> Option<Vec<(usize, Vec<P<Type>>)>> {
+/// The parameters of `call` whose generated values hold `serializer` or network intrinsics, with each one's `T` and
+/// site kind in build order: `None` for a call with none, that is not a user macro, or that the hook declines
+/// (`super()`) or fails on.
+#[allow(clippy::type_complexity)]
+fn serializer_parameters(
+    fw: &FwInstance,
+    cx: &mut Cx<'_>,
+    call: P<Node>,
+) -> Option<Vec<(usize, Vec<(P<Type>, crate::serializer::SiteKind)>)>> {
     if !is_macro_callee(fw, cx, call) {
         return None;
     }
     let signature = cx.checker().get_resolved_signature_exported(call);
-    let declaration = signature.declaration()?;
-    let metadata = fw.metadata(cx, declaration);
-    if LATER_PARAMETER_INTRINSICS.iter().any(|(key, _)| metadata.symbols(key).is_some()) {
-        return None;
-    }
+    signature.declaration()?;
     let analysis = Analysis { fw, node: call };
     let arguments = call.arguments();
     let mut generated = Vec::new();
+    let mut shuffles = 0;
     for index in 0..parameter_count(cx, signature) {
         if !is_undefined_argument(arguments.get(index).copied()) {
             continue;
@@ -706,10 +752,9 @@ fn serializer_parameters(fw: &FwInstance, cx: &mut Cx<'_>, call: P<Node>) -> Opt
         let parameter_type = cx.checker().get_type_at_position_exported(signature, index);
         let target = cx.checker().get_non_nullable_type(parameter_type);
         match analysis.of_union(cx, target) {
-            Ok(Some(found)) if found.later().is_some() => return None,
             Ok(Some(found)) => {
                 let mut types = Vec::new();
-                found.serializer_types(&mut types);
+                found.prepared_sites(fw, cx, call, None, &mut shuffles, &mut types);
                 if !types.is_empty() {
                     generated.push((index, types));
                 }
@@ -977,8 +1022,17 @@ impl Analysis<'_> {
             },
             "tuple-guards" => inputs.first().map_or_else(invalid, |&t| Intrinsic::TupleGuards(t)),
             "serializer" => inputs.first().map_or_else(invalid, |&t| Intrinsic::Serializer(t)),
-            "network-decoder" | "network-result-decoder" | "network-unreliable" => {
-                Intrinsic::Later { id: id.to_owned(), milestone: "F5" }
+            // `[T, F?, K?]` for an argument list, `[F, K?]` for a result and for `network-unreliable`.
+            "network-decoder" => match inputs.first() {
+                Some(&list) => Intrinsic::NetworkDecoder { list, member: inputs.get(1).copied(), key: inputs.get(2).copied() },
+                None => invalid(),
+            },
+            "network-result-decoder" => match inputs.first() {
+                Some(&function) => Intrinsic::NetworkResultDecoder { function, key: inputs.get(1).copied() },
+                None => invalid(),
+            },
+            "network-unreliable" => {
+                Intrinsic::NetworkUnreliable { member: inputs.first().copied(), key: inputs.get(1).copied() }
             }
             _ => Intrinsic::Invalid(format!("Unexpected intrinsic ID '{id}' with {} inputs", inputs.len())),
         })
@@ -1264,10 +1318,26 @@ impl Builder<'_> {
                 let version = serializer_version_at(fw, cx, self.node)?;
                 crate::serializer::build_serializer(fw, cx, self.node, *ty, version)
             }
-            Intrinsic::Later { id, milestone } => Err(cx.error(
-                self.node,
-                format!("The {id} intrinsic is not in rbxts-rs's Flamework yet ({milestone})."),
-            )),
+            // Networking metadata: a decoder only for a packed member, `nil` (values pass through) otherwise.
+            Intrinsic::NetworkDecoder { list, member, key } => {
+                if !crate::networking::mode::check_packed(fw, cx, *member, self.node, *key)? {
+                    return Ok(create::nil());
+                }
+                crate::serializer::build_decoder(fw, cx, self.node, *list, false)
+            }
+            Intrinsic::NetworkResultDecoder { function, key } => {
+                if !crate::networking::mode::check_packed(fw, cx, Some(*function), self.node, *key)? {
+                    return Ok(create::nil());
+                }
+                crate::serializer::build_decoder(fw, cx, self.node, *function, true)
+            }
+            // Whether an event is unreliable, and the one place every member of an event network passes through, so
+            // its markers are checked.
+            Intrinsic::NetworkUnreliable { member, key } => {
+                crate::networking::mode::check_packed(fw, cx, *member, self.node, *key)?;
+                let unreliable = crate::networking::mode::has_marker(cx, *member, "_flamework_unreliable");
+                Ok(if unreliable { create::bool(true) } else { create::nil() })
+            }
             Intrinsic::Invalid(message) => Err(cx.error(self.node, message.clone())),
         }
     }
@@ -1279,13 +1349,12 @@ impl Builder<'_> {
         if shared.config.obfuscation != Some(true) {
             return;
         }
-        let Some(seed) = &shared.build_seed else { return };
-        let mut file = self.fw.file.borrow_mut();
-        let sequence = file.next();
-        drop(file);
-        let offset = cx.utf16_pos(self.node).offset;
-        let file_id = shared.file_id(&cx.file().path);
-        crate::shuffle::shuffle(items, &format!("{}\0{file_id}\0{offset}\0{context}\0{sequence}", seed.as_str()));
+        if shared.build_seed.is_none() {
+            return;
+        }
+        let mut count = self.fw.file.borrow().shuffles.get(&self.node).copied().unwrap_or(0);
+        shuffle(self.fw, cx, self.node, items, context, &mut count);
+        self.fw.file.borrow_mut().shuffles.insert(self.node, count);
     }
 
     /// `buildEnvIntrinsic`: the variable's value as a string literal, else the fallback, else `nil`; recorded in
@@ -1549,16 +1618,4 @@ mod tests {
         assert_eq!(usable_name(""), Err("v_".into()));
     }
 
-    #[test]
-    fn later_milestones_are_found_in_nested_macros() {
-        let literal = UserMacro::Literal(LiteralMacro::Num(1.0));
-        assert!(literal.later().is_none());
-        let decoder = UserMacro::Intrinsic(Intrinsic::Later { id: "network-decoder".into(), milestone: "F5" });
-        let nested = UserMacro::SharedRef(Box::new(UserMacro::Map(vec![
-            (TableKey::Str("a".into()), literal.clone()),
-            (TableKey::Num(2.0), UserMacro::Many(vec![literal, decoder])),
-        ])));
-        let later = nested.later().expect("found");
-        assert_eq!((later.what.as_str(), later.milestone), ("the network-decoder intrinsic", "F5"));
-    }
 }

@@ -431,7 +431,7 @@ impl Lowerer<'_> {
         match e {
             E::Id(id) => create::id(self.name(*id)),
             E::Global(name) => create::id(name.as_str()),
-            E::Ext(e, _) => e.clone(),
+            E::Ext(value) => value.value.borrow().clone(),
             E::Guard(guard) => guard.named(),
             E::Num(value) => number(*value),
             E::Str(text) => string_literal(text),

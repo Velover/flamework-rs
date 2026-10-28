@@ -1,0 +1,6 @@
+{
+  "name": "@flamework-experimental/f5-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "main": "out/init.luau"
+}

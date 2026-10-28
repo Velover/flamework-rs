@@ -160,7 +160,6 @@ impl Gen<'_, '_, '_> {
     }
 
     /// `listKey(list)`.
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
     pub(crate) fn list_key(&mut self, list: Shape) -> GResult<String> {
         Ok(self.wire_key(&list, &mut Vec::new(), false)?.0)
     }
@@ -315,7 +314,6 @@ impl Gen<'_, '_, '_> {
     }
 
     /// `carriesNothing(list)`.
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
     pub(crate) fn carries_nothing(&mut self, list: &Kind) -> GResult<bool> {
         let Kind::List { elements, rest, .. } = list else { return Ok(false) };
         if rest.is_some() {

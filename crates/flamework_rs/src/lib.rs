@@ -25,10 +25,11 @@
 //! - [`metadata`]: JSDoc `@metadata` requests with `{@link}` entries;
 //! - [`uid`]: type and declaration ids, late in `short` / `tiny` / `obfuscated` mode;
 //! - [`class_hook`]: `Reflect.defineMetadata` at the static-block position, and the decorator checks;
-//! - [`macros`]: user macros (F2): every marker kind, the intrinsics up to F2, and the parameter intrinsics; the
-//!   parts of later milestones are declined (or refused) loudly;
+//! - [`macros`]: user macros (F2): every marker kind, the intrinsics, and the parameter intrinsics;
 //! - [`guards`]: `t` guards from types (F3), for class metadata, `Generic<T, "guard">` and `tuple-guards`;
 //! - [`components`]: component config, instance shapes, attribute setters and key obfuscation (F6);
+//! - `networking`: call sites on networking members, network decoders, middleware names and the removed-marker
+//!   message (F5);
 //! - [`macro_type`]: user plugins' macro types (`MacroType`, registered with [`Flamework::macro_type`]);
 //! - [`finish`]: id assignment in transform order, `flamework.build`, the include JSON, the glob and path warnings;
 //! - [`inputs`]: reading files and variables as recorded build inputs;
@@ -54,6 +55,7 @@ pub mod jsonc;
 pub mod macro_type;
 pub mod macros;
 pub mod metadata;
+pub(crate) mod networking;
 pub mod node_path;
 pub mod order;
 pub mod part_codec;

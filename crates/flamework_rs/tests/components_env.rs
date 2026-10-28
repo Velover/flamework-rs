@@ -33,9 +33,10 @@ fn obfuscated_keys_with_a_pinned_seed() {
         format!("local spaced = remotes[\"{spaced}\"]"),
         // A key that is no identifier: the method is called with an explicit self.
         format!("local called = remotes[\"{call}\"](remotes, 1)"),
-        // Through an optional chain the receiver is `Remotes | undefined`, whose marker property is partial: left
-        // alone, as the TS leaves it.
-        "_chained = _chained.fire".to_owned(),
+        // Through an optional chain the receiver is `Remotes | undefined`: obfuscated as outside a chain, through its
+        // non-nullable type (a deliberate difference: the TS leaves it as written, `components::obfuscation`).
+        format!("_chained = _chained[\"{fire}\"]"),
+        format!("_chainedCall = _chainedCall[\"{call}\"](_chainedCall, 2)"),
         // Only the first access's receiver carries the marker.
         format!("local nested = remotes[\"{}\"].inner", seed.v5("remotes:nested")),
         // `obj[k as "k"]` is how obfuscated objects are reached internally: left alone.
@@ -47,7 +48,7 @@ fn obfuscated_keys_with_a_pinned_seed() {
     ] {
         assert!(text.contains(&line), "missing `{line}`:\n{text}");
     }
-    assert_eq!(text.matches(".fire").count(), 1, "{text}");
+    assert_eq!(text.matches(".fire").count(), 0, "{text}");
 
     // The same seed, the same bytes.
     let second = project.build_with(Flamework::new());

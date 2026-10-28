@@ -11,7 +11,7 @@ use super::classify::datatype;
 use super::hoist::{MALFORMED, Role};
 use super::ir::{self, Bind, Body, E, Id, Key, Op, S, Ty};
 use super::typeinfo::{key_access, key_name, key_segment, local_name};
-use super::{EncodingSite, GResult, Gen, Kind, LengthWidth, Layout, Shape, Values, Width};
+use super::{EncodingSite, GResult, Gen, Kind, LengthWidth, Layout, Shape, Width};
 
 const HEADER_SIZE: u64 = 5;
 const BLOB_SIZE: i64 = 4;
@@ -138,7 +138,6 @@ impl Sum {
         }
     }
 
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
     fn add_number(&mut self, n: f64) {
         self.constant += n;
     }
@@ -184,7 +183,6 @@ pub(crate) fn interpolate(parts: Vec<Part>) -> E {
 }
 
 /// The bytes of a varint known when building (`staticVarint`).
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
 fn static_varint(mut n: u64) -> Vec<u64> {
     let mut bytes = Vec::new();
     while n >= 128 {
@@ -195,13 +193,18 @@ fn static_varint(mut n: u64) -> Vec<u64> {
     bytes
 }
 
-/// The payload and blob list an encoding chose (its last build's).
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-type Chosen = Rc<RefCell<Option<(Id, Option<Id>)>>>;
+/// The payload and blob list of each build of an encoding, in build order (`encodings`): the one `fitted` kept is
+/// the encoding's (`kept(statements)`).
+type Chosen = Rc<RefCell<Vec<(Id, Option<Id>)>>>;
 
+
+/// The payload and blob list of the build `fitted_choice` kept: the compact rebuild's, or the first build's.
+fn kept(chosen: &Chosen, rebuilt: bool) -> (Id, Option<Id>) {
+    let builds = chosen.borrow();
+    if rebuilt { *builds.last().expect("the rebuild ran") } else { builds[0] }
+}
 
 /// A call site's packing, before naming.
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
 pub(crate) struct Encoding {
     pub statements: Vec<S>,
     pub payload: Option<Id>,
@@ -210,7 +213,6 @@ pub(crate) struct Encoding {
 
 /// A value of a call site (`values[i]`).
 #[derive(Clone)]
-#[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
 pub(crate) enum SiteValues {
     List(Vec<E>),
     Table(E),
@@ -282,7 +284,6 @@ impl Gen<'_, '_, '_> {
     }
 
     /// `buildDecoder(list)`: `None` when the list carries nothing.
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
     pub(crate) fn build_decoder(&mut self, list: Shape) -> GResult<Option<E>> {
         let kind = self.describe(&list)?;
         if self.carries_nothing(&kind)? {
@@ -308,17 +309,7 @@ impl Gen<'_, '_, '_> {
         Ok(Some(ir::paren(ir::arrow(params.iter().map(|&p| ir::param(p)).collect(), Body::Block(body)))))
     }
 
-    /// A call site's values as the generator's expressions.
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
-    pub(crate) fn external_values(&mut self, values: Values) -> SiteValues {
-        match values {
-            Values::List(list) => SiteValues::List(list.into_iter().map(|(e, parameter)| E::Ext(e, parameter)).collect()),
-            Values::Table(e) => SiteValues::Table(ir::cast(E::Ext(e, false), Ty::Array)),
-        }
-    }
-
     /// `encodeElements(list, values, site)`.
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
     pub(crate) fn encode_elements(&mut self, list: Shape, values: SiteValues, site: EncodingSite) -> GResult<Encoding> {
         let kind = self.describe(&list)?;
         if self.carries_nothing(&kind)? {
@@ -327,17 +318,17 @@ impl Gen<'_, '_, '_> {
         let Kind::List { elements, rest, after } = &*kind else { unreachable!() };
         let layout = self.layout_of(&list)?;
         self.count_uses(&list)?;
-        let chosen: Chosen = Rc::new(RefCell::new(None));
+        let chosen: Chosen = Rc::new(RefCell::new(Vec::new()));
 
         let values = match values {
             SiteValues::Table(table) => {
                 let chosen_in = chosen.clone();
-                let statements = self.fitted(
+                let (statements, rebuilt) = self.fitted_choice(
                     &mut |gn| {
                         let body = out();
                         let place = Place { path: Some(String::new()), site: site.name.clone(), args: true, ..Place::default() };
                         let encoding = gn.encode_into(&list, layout, table.clone(), &body, &place, None)?;
-                        *chosen_in.borrow_mut() = Some(encoding);
+                        chosen_in.borrow_mut().push(encoding);
                         Ok(take(&body))
                     },
                     &[],
@@ -345,7 +336,7 @@ impl Gen<'_, '_, '_> {
                     None,
                     site.outer,
                 )?;
-                let (buf, blobs) = chosen.borrow().unwrap();
+                let (buf, blobs) = kept(&chosen, rebuilt);
                 return Ok(Encoding { statements, payload: Some(buf), blobs });
             }
             SiteValues::List(values) => values,
@@ -365,13 +356,15 @@ impl Gen<'_, '_, '_> {
             self.count_uses(rest.as_ref().unwrap())?;
         }
         let count_bytes = static_varint(rest_values.len() as u64);
-        let first = values.first().cloned();
-        let own: Vec<Id> = Vec::new();
-        let _ = first;
+        // A function's result is packed in a function of its own, whose one parameter is the value.
+        let own: Vec<Id> = match (site.result, values.first()) {
+            (true, Some(E::Id(id))) => vec![*id],
+            _ => Vec::new(),
+        };
         let chosen_in = chosen.clone();
         let tail_chosen = chosen.clone();
         let mut tail = move |_gen: &mut Self| -> Vec<S> {
-            let (buf, blobs) = tail_chosen.borrow().unwrap();
+            let (buf, blobs) = *tail_chosen.borrow().last().expect("the build ran");
             let mut list = vec![ir::id(buf)];
             if let Some(b) = blobs {
                 list.push(ir::id(b));
@@ -380,7 +373,7 @@ impl Gen<'_, '_, '_> {
         };
         let elements = elements.clone();
         let rest = rest.clone();
-        let statements = self.fitted(
+        let (statements, rebuilt) = self.fitted_choice(
             &mut |gn| {
                 let body = out();
                 let encoding = gn.encode_values(
@@ -395,7 +388,7 @@ impl Gen<'_, '_, '_> {
                     &after_values,
                     &count_bytes,
                 )?;
-                *chosen_in.borrow_mut() = Some(encoding);
+                chosen_in.borrow_mut().push(encoding);
                 Ok(take(&body))
             },
             &own,
@@ -403,13 +396,12 @@ impl Gen<'_, '_, '_> {
             if site.result { Some(&mut tail) } else { None },
             site.outer,
         )?;
-        let (buf, blobs) = chosen.borrow().unwrap();
+        let (buf, blobs) = kept(&chosen, rebuilt);
         Ok(Encoding { statements, payload: Some(buf), blobs })
     }
 
     /// `encodeValues(...)`.
     #[allow(clippy::too_many_arguments)]
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
     fn encode_values(
         &mut self,
         elements: &[Shape],
@@ -742,9 +734,22 @@ impl Gen<'_, '_, '_> {
         build: &mut dyn FnMut(&mut Self) -> GResult<Vec<S>>,
         parameters: &[Id],
         what: Option<&str>,
-        mut tail: Option<&mut dyn FnMut(&mut Self) -> Vec<S>>,
+        tail: Option<&mut dyn FnMut(&mut Self) -> Vec<S>>,
         outer: u32,
     ) -> GResult<Vec<S>> {
+        self.fitted_choice(build, parameters, what, tail, outer).map(|(body, _)| body)
+    }
+
+    /// [`Self::fitted`], saying which build it kept: `true` for the compact rebuild, `false` for the first build.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn fitted_choice(
+        &mut self,
+        build: &mut dyn FnMut(&mut Self) -> GResult<Vec<S>>,
+        parameters: &[Id],
+        what: Option<&str>,
+        mut tail: Option<&mut dyn FnMut(&mut Self) -> Vec<S>>,
+        outer: u32,
+    ) -> GResult<(Vec<S>, bool)> {
         let previous = self.g.compact;
         self.g.compact = false;
         let result = (|| {
@@ -759,7 +764,7 @@ impl Gen<'_, '_, '_> {
             };
             let plain = measure(self, &body);
             if !plain.needs_compacting() {
-                return Ok(body);
+                return Ok((body, false));
             }
             self.g.compact = true;
             let rebuilt = build(self)?;
@@ -767,17 +772,17 @@ impl Gen<'_, '_, '_> {
             let no_smaller = pressure.locals >= plain.locals && pressure.registers >= plain.registers;
             let exceeds = |p: super::pressure::Pressure| p.exceeds_limits();
             if !exceeds(plain) && (no_smaller || exceeds(pressure)) {
-                return Ok(body);
+                return Ok((body, false));
             }
             if exceeds(pressure) {
-                let Some(what) = what else { return Ok(if no_smaller { body } else { rebuilt }) };
+                let Some(what) = what else { return Ok(if no_smaller { (body, false) } else { (rebuilt, true) }) };
                 let kept = if no_smaller { plain } else { pressure };
                 return Err(self.fail(&format!(
                     "the code for {what} needs about {} locals and {} registers in one function, built one field at a time or not, past Luau's limit of {} locals / {} registers. Split the type into smaller named types",
                     kept.locals, kept.registers, super::pressure::LUAU_MAX_LOCALS, super::pressure::LUAU_MAX_REGISTERS
                 )));
             }
-            Ok(rebuilt)
+            Ok((rebuilt, true))
         })();
         self.g.compact = previous;
         result

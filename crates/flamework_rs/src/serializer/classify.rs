@@ -693,7 +693,6 @@ impl Gen<'_, '_, '_> {
     }
 
     /// `resultOf(fn, node)`: a function type's (resolved) result as a one-element list.
-    #[allow(dead_code, reason = "F5 (networking) calls it: the network intrinsics and call sites")]
     pub(crate) fn result_of(&mut self, function: P<Type>, node: P<Node>) -> GResult<Shape> {
         let signature = self.cx.checker().get_signatures_of_type(function, SignatureKind::Call).first().copied();
         let Some(signature) = signature else {
