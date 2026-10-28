@@ -1,0 +1,30 @@
+error errors.ts:13:64: Child 'Head' of the instance tree of 'OptionalChild' is optional, which Flamework does not allow: Roblox raises when a child that does not exist is indexed, so 'this.instance.Head' would error rather than be undefined.
+Require the child, or leave it out of the tree and reach for it with FindFirstChild; a component that may be missing can be named by an optional link attribute, or looked up with getComponent.
+error errors.ts:17:86: Child 'Body.Inner' of the instance tree of 'OptionalGrandchild' is optional, which Flamework does not allow: Roblox raises when a child that does not exist is indexed, so 'this.instance.Body.Inner' would error rather than be undefined.
+Require the child, or leave it out of the tree and reach for it with FindFirstChild; a component that may be missing can be named by an optional link attribute, or looked up with getComponent.
+error errors.ts:21:14: Component 'Handler' is linked at 'Body.Inner', which is not a direct child of this component.
+Only a direct child of the instance tree can name a component. Declare it on the component attached to that child, or look it up with getComponent.
+error errors.ts:29:14: Child 'Branch.Twig' of the instance tree of 'EndlessTree' has the type of the tree around it, 'Branch', so it would hold that tree again below it, without end. No instance has that tree.
+Declare the child with a type that stops, or leave it out of the tree and reach for it with FindFirstChild.
+error errors.ts:33:14: Failed to generate component attributes: AttributeGuards<{ thing: NotAnInstance; }>
+    errors.ts:33:14: Class "NotAnInstance" was encountered. Flamework does not support generating guards for classes.
+    baseComponent.d.ts:49:34: Type was defined here: AttributeGuards<{ thing: NotAnInstance; }>
+    errors.ts:7:7: Type was defined here: NotAnInstance
+error errors.ts:37:14: Failed to generate a guard for the 'target' link
+    errors.ts:37:14: Class "NotAnInstance" was encountered. Flamework does not support generating guards for classes.
+    errors.ts:7:7: Type was defined here: NotAnInstance
+error errors.ts:42:12: Flamework expected this argument to be a literal expression.
+    decorator.d.ts:180:35: Required because this parameter must be known at compile-time.
+error errors.ts:48:14: Flamework does not support spread expressions in this location.
+    decorator.d.ts:180:35: Required because this parameter must be known at compile-time.
+error errors.ts:62:28: This object has key obfuscation enabled and must be accessed directly.
+error errors.ts:64:28: This object has key obfuscation enabled and must be accessed directly.
+error errors.ts:65:31: This object has key obfuscation enabled and must be accessed directly.
+error errors.ts:71:2: Attempted to assign method where non-method was expected.
+error errors.ts:80:2: Attempted to assign method where non-method was expected.
+error errors.ts:90:3: Attempted to assign method where non-method was expected.
+error errors.ts:100:2: Getters and Setters are not supported!
+More information: https://github.com/roblox-ts/roblox-ts/issues/457
+error errors.ts:110:37: An object literal cannot have multiple properties with the same name.
+error errors.ts:118:37: An object literal cannot have multiple properties with the same name.
+error errors.ts:124:51: An object literal cannot have multiple properties with the same name.

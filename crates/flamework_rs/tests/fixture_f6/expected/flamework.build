@@ -1,0 +1,42 @@
+{
+	"version": 1,
+	"flameworkVersion": "2.0.0-beta.0",
+	"identifiers": {
+		"f6-component-fixture:out/shared/accessors@GetterAttributes": "shared/accessors@GetterAttributes",
+		"f6-component-fixture:out/shared/accessors@SetterAttributes": "shared/accessors@SetterAttributes",
+		"f6-component-fixture:out/shared/attributes@AttributeComponent": "shared/attributes@AttributeComponent",
+		"f6-component-fixture:out/shared/components@HandlerComponent": "shared/components@HandlerComponent",
+		"f6-component-fixture:out/shared/components@RigComponent": "shared/components@RigComponent",
+		"f6-component-fixture:out/shared/components@LinkedComponent": "shared/components@LinkedComponent",
+		"f6-component-fixture:out/shared/components@CounterComponent": "shared/components@CounterComponent",
+		"f6-component-fixture:out/shared/components@DeepComponent": "shared/components@DeepComponent",
+		"f6-component-fixture:out/shared/components@EitherComponent": "shared/components@EitherComponent",
+		"f6-component-fixture:out/shared/components@CustomGuardComponent": "shared/components@CustomGuardComponent",
+		"f6-component-fixture:out/shared/components@RigOwnerComponent": "shared/components@RigOwnerComponent",
+		"f6-component-fixture:out/shared/config@BareComponent": "shared/config@BareComponent",
+		"f6-component-fixture:out/shared/config@EmptyConfigComponent": "shared/config@EmptyConfigComponent",
+		"f6-component-fixture:out/shared/config@CustomAttributeComponent": "shared/config@CustomAttributeComponent",
+		"f6-component-fixture:out/shared/config@OrderedConfigComponent": "shared/config@OrderedConfigComponent",
+		"f6-component-fixture:out/shared/config@BaseAttributeComponent": "shared/config@BaseAttributeComponent",
+		"f6-component-fixture:out/shared/config@DerivedAttributeComponent": "shared/config@DerivedAttributeComponent",
+		"f6-component-fixture:out/shared/config@NarrowComponent": "shared/config@NarrowComponent",
+		"f6-component-fixture:out/shared/config@PlainComponent": "shared/config@PlainComponent",
+		"f6-component-fixture:out/shared/config@GuardedComponent": "shared/config@GuardedComponent",
+		"f6-component-fixture:out/shared/config@ValuesComponent": "shared/config@ValuesComponent",
+		"f6-component-fixture:out/shared/config@LinkedCustomComponent": "shared/config@LinkedCustomComponent",
+		"f6-component-fixture:out/shared/config@HeldGuardsComponent": "shared/config@HeldGuardsComponent",
+		"f6-component-fixture:out/shared/config@ComputedNameComponent": "shared/config@ComputedNameComponent",
+		"f6-component-fixture:out/shared/fields@FieldsComponent": "shared/fields@FieldsComponent",
+		"f6-component-fixture:out/shared/order@ShorthandComponent": "shared/order@ShorthandComponent",
+		"f6-component-fixture:out/shared/order@MovedComponent": "shared/order@MovedComponent",
+		"f6-component-fixture:out/shared/order@LastComponent": "shared/order@LastComponent",
+		"f6-component-fixture:out/shared/order@ComputedComponent": "shared/order@ComputedComponent",
+		"f6-component-fixture:out/shared/order@RebindingComponent": "shared/order@RebindingComponent",
+		"f6-component-fixture:out/shared/recursiveLink@RecursiveLink": "shared/recursiveLink@RecursiveLink",
+		"f6-component-fixture:out/shared/recursiveLink@RecursiveTwice": "shared/recursiveLink@RecursiveTwice"
+	},
+	"inputs": {
+		"config": "c50026ae9122be8591d82f1836bbec1c2fc6d11b"
+	},
+	"idGenerationMode": "full"
+}

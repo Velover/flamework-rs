@@ -11,17 +11,17 @@
 //! `plugin` ([`crate::macro_type`]).
 //!
 //! **Parameter intrinsics** on the macro's declaration: `intrinsic-inline` (the call becomes one generated value),
-//! `intrinsic-flamework-rewrite` (the callee becomes `core.<Namespace>.<name>`) and `intrinsic-const` (a literal
-//! argument check).
+//! `intrinsic-flamework-rewrite` (the callee becomes `core.<Namespace>.<name>`), `intrinsic-const` (a literal
+//! argument check) and `intrinsic-component-config` (a class decorator's config, [`crate::components::config`]).
 //!
 //! **Guards.** `Generic<T, "guard">` is [`crate::guards::guard_for_with_dedup`] at the call (its dedup locals go
 //! ahead of the statement, before any argument is compiled, as the TS's `prereqList` puts them), and the
 //! `tuple-guards` intrinsic is [`crate::guards::tuple_guards`].
 //!
 //! **Later milestones.** `serializer` and `intrinsic-serializer-options` (F4), the network intrinsics and
-//! `intrinsic-middleware` (F5) and `intrinsic-component-config` (F6) decline the call before anything is compiled,
-//! so roblox-ts compiles it as a plain call, and finish gives one warning naming every such site's milestone. The
-//! decision reads only the AST and types (a hook cannot decline after it compiled something).
+//! `intrinsic-middleware` (F5) decline the call before anything is compiled, so roblox-ts compiles it as a plain call,
+//! and finish gives one warning naming every such site's milestone. The decision reads only the AST and types (a hook
+//! cannot decline after it compiled something).
 
 use rbxts_luau::create;
 use rbxts_plugin::ts::{Kind, Node, P, Symbol, Type};
@@ -132,8 +132,8 @@ impl UserMacro {
 }
 
 /// The parameter intrinsics a macro declaration can carry that later milestones bring.
-const LATER_PARAMETER_INTRINSICS: [(&str, &str); 3] =
-    [("intrinsic-middleware", "F5"), ("intrinsic-component-config", "F6"), ("intrinsic-serializer-options", "F4")];
+const LATER_PARAMETER_INTRINSICS: [(&str, &str); 2] =
+    [("intrinsic-middleware", "F5"), ("intrinsic-serializer-options", "F4")];
 
 /// The call hook for a callee classified as a user macro (`transformCallExpression` / `transformNewExpression` and
 /// `transformUserMacro`).
@@ -195,8 +195,15 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         validate_const(cx, expression, signature, &constants)?;
     }
     let rewrite = metadata.symbols("intrinsic-flamework-rewrite").and_then(|s| s.first().copied());
+    // `intrinsic-component-config`: the config parameters of a class decorator (`transformComponentConfig`).
+    let component = crate::components::config::decorated_class(expression).and_then(|class| {
+        let symbols = metadata.symbols("intrinsic-component-config")?;
+        let indices: Vec<usize> = symbols.iter().filter_map(|&s| parameter_index(signature, s)).collect();
+        Some((class, indices))
+    })
+    .filter(|(_, indices)| !indices.is_empty());
 
-    if parameters.is_empty() && inline.is_none() && rewrite.is_none() {
+    if parameters.is_empty() && inline.is_none() && rewrite.is_none() && component.is_none() {
         // Nothing to generate or change: the call as written, which is what roblox-ts compiles anyway.
         return Ok(Claim::Decline);
     }
@@ -208,6 +215,19 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         fw.file.borrow_mut().current_key = key.clone();
         let builder = Builder { fw, node: expression, key };
         values.push((*index, builder.build(cx, found)?));
+    }
+    // The config replaces its argument (one that is not an object literal too, as the TS does).
+    if let Some((class, indices)) = &component {
+        for &index in indices {
+            if values.iter().any(|(i, _)| *i == index) {
+                continue;
+            }
+            let key = fw.order_key(cx, expression, (0, index as u32));
+            let argument = call.args.get(index).copied();
+            let value = crate::components::config::component_config(fw, cx, *class, argument, key)?;
+            values.push((index, value));
+        }
+        values.sort_by_key(|(i, _)| *i);
     }
 
     if let Some(index) = inline {
@@ -223,7 +243,7 @@ pub(crate) fn user_macro(fw: &FwInstance, cx: &mut Cx<'_>, call: &CallSite) -> P
         };
     }
 
-    let highest = parameters.iter().map(|(i, _)| *i).max();
+    let highest = values.iter().map(|(i, _)| *i).max();
     let count = call.args.len().max(highest.map_or(0, |h| h + 1));
     let mut args = Vec::with_capacity(count);
     let mut values = values.into_iter().peekable();

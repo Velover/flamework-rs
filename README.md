@@ -4,14 +4,14 @@ Flamework's TypeScript transformer (v2, `@flamework-experimental/transformer`) p
 [rbxts-rs](#dependencies) (roblox-ts in Rust, on tsrs), plus `rbxtsc-fw`: the `rbxtsc` command line with Flamework
 compiled in, the binary a Flamework project builds with.
 
-- `crates/flamework_rs`: the plugin (ids, decorators and metadata, user macros and intrinsics, guards, `flamework.build`,
-  the include JSON) and the byte-exact libraries its output depends on.
+- `crates/flamework_rs`: the plugin (ids, decorators and metadata, user macros and intrinsics, guards, components,
+  `flamework.build`, the include JSON) and the byte-exact libraries its output depends on.
 - `crates/rbxtsc_fw`: the `rbxtsc-fw` binary. It takes roblox-ts's `build` arguments and returns its exit codes;
   Flamework is on for a project whose tsconfig lists `@flamework-experimental/transformer` in
   `compilerOptions.plugins`.
 
-**Status:** work in progress, provided as is. Later milestones (the serializer, networking, component config) are
-still missing; a macro call that needs one compiles as a plain call, with a warning.
+**Status:** work in progress, provided as is. Later milestones (the serializer, networking) are still missing; a macro
+call that needs one compiles as a plain call, with a warning.
 
 **Licence:** MIT (`LICENSE`). Parts are ports of Flamework, hashids, uuid, glob, minimatch and brace-expansion; their
 notices are in `THIRD-PARTY-NOTICES.md`.

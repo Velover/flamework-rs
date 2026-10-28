@@ -120,6 +120,8 @@ pub(crate) struct Generator<'g, 'x> {
     library_warning: Option<&'static str>,
     t: Option<Expr>,
     diagnostic_node: P<Node>,
+    /// `withDiagnosticContext(node, message, …)` around the build: an error becomes a note of an error at `node`.
+    context: Option<(P<Node>, String)>,
     pub(crate) names: Names,
     tracking: Vec<(P<Node>, P<Type>)>,
     pub(crate) dedup: Vec<Dedup>,
@@ -142,6 +144,7 @@ impl<'g, 'x> Generator<'g, 'x> {
             library_warning,
             t: None,
             diagnostic_node,
+            context: None,
             names: Names::default(),
             tracking: Vec::new(),
             dedup: Vec::new(),
@@ -161,7 +164,13 @@ impl<'g, 'x> Generator<'g, 'x> {
     /// `fail`: an error at the guard's node, with a "Type was defined here" note for each type the guard was being
     /// built inside of (a run of the same type once).
     fn fail(&mut self, message: impl Into<String>) -> Abort {
-        let mut diagnostic = PluginDiagnostic::error(self.diagnostic_node, message);
+        let message = message.into();
+        let mut diagnostic = match &self.context {
+            Some((node, context)) => {
+                PluginDiagnostic::error(*node, context.clone()).with_related(self.diagnostic_node, message)
+            }
+            None => PluginDiagnostic::error(self.diagnostic_node, message),
+        };
         let mut previous: Option<P<Type>> = None;
         for &(node, ty) in &self.tracking.clone() {
             if previous == Some(ty) {
@@ -173,6 +182,21 @@ impl<'g, 'x> Generator<'g, 'x> {
             diagnostic = diagnostic.with_related(at, format!("Type was defined here: {text}"));
         }
         self.cx.report(diagnostic).expect("an error")
+    }
+
+    /// An error at `at`, in the context when there is one.
+    fn error_at(&mut self, at: P<Node>, message: &str) -> Abort {
+        let diagnostic = match &self.context {
+            Some((node, context)) => PluginDiagnostic::error(*node, context.clone()).with_related(at, message),
+            None => PluginDiagnostic::error(at, message),
+        };
+        self.cx.report(diagnostic).expect("an error")
+    }
+
+    /// Reports errors inside `withDiagnosticContext(node, message, …)`: each becomes a note of an error at `node`
+    /// with `message`, its own notes after it.
+    pub(crate) fn set_context(&mut self, context: Option<(P<Node>, String)>) {
+        self.context = context;
     }
 
     // --- `t` ---
@@ -754,7 +778,7 @@ impl<'g, 'x> Generator<'g, 'x> {
             Ok(instance_type) => instance_type,
             Err(at) => {
                 let at = at.unwrap_or_else(|| self.cx.file().source.get().as_node());
-                return Err(self.cx.error(at, "Intersection between nominal types is forbidden."));
+                return Err(self.error_at(at, "Intersection between nominal types is forbidden."));
             }
         };
         let mut children = Vec::new();

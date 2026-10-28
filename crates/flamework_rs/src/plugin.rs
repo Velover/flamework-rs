@@ -4,8 +4,9 @@
 //!   `finish` ([`crate::finish`]) assigns the new ids in transform order (roblox-ts's `getChangedFilePaths` order),
 //!   resolves the late ids, expands the globs and queues the include JSON and `flamework.build`, which it leaves in
 //!   the state too.
-//! - [`FwInstance`], one per checker: the class hook ([`crate::class_hook`]) and the call hook for user macros
-//!   ([`crate::macros`]), with this checker's metadata and decorator caches.
+//! - [`FwInstance`], one per checker: the class hook ([`crate::class_hook`]), the call hook for user macros
+//!   ([`crate::macros`]), and the assignment and property-key hooks of components ([`crate::components`]), with this
+//!   checker's metadata and decorator caches.
 //! - [`FwFilePart`], one per file: the ids it asked for first, its glob and path uses, and the macro sites it left to
 //!   later milestones. Only parts cross threads, so the output is the same for any checker count (DESIGN §10.4).
 //!
@@ -20,8 +21,8 @@ use std::sync::Arc;
 
 use rbxts_plugin::ts::{Node, P, Symbol};
 use rbxts_plugin::{
-    CallSite, CheckerInfo, Claim, ClassFilter, ClassSite, Cx, Fatal, FileIndex, FinishCx, Interest,
-    LuauExpr, LuauStmt, PResult, Plugin, PluginInfo, PluginInstance, SetupCx, SymbolRole, Tag,
+    AccessSite, AssignSite, CallSite, CheckerInfo, Claim, ClassFilter, ClassSite, Cx, Fatal, FileIndex, FinishCx,
+    Interest, LuauExpr, LuauStmt, PResult, Plugin, PluginInfo, PluginInstance, SetupCx, SymbolRole, Tag,
 };
 
 use crate::build_info::{GlobUse, PathUse};
@@ -236,10 +237,18 @@ impl PluginInstance for FwInstance {
         interest.calls_by_symbol();
         // Metadata is decided by JSDoc, not by a decorator, so every class is offered.
         interest.classes(ClassFilter::All);
+        // Components (F6): attribute setters and obfuscated keys.
+        interest.assignments_by_receiver_symbol();
+        interest.accesses_by_marker(crate::components::KEY_OBFUSCATION_MARKER, crate::components::TAG_KEY_OBFUSCATION);
     }
 
     fn classify_symbol(&self, cx: &mut Cx<'_>, symbol: P<Symbol>, role: SymbolRole) -> Option<Tag> {
-        (role == SymbolRole::Callee && self.is_user_macro(cx, symbol)).then_some(TAG_MACRO)
+        match role {
+            SymbolRole::Callee => self.is_user_macro(cx, symbol).then_some(TAG_MACRO),
+            SymbolRole::AssignReceiver => {
+                self.is_attributes_symbol(cx, symbol).then_some(crate::components::TAG_ATTRIBUTES)
+            }
+        }
     }
 
     fn begin_file(&self, cx: &mut Cx<'_>) -> PResult<()> {
@@ -256,6 +265,20 @@ impl PluginInstance for FwInstance {
             return Ok(Claim::Decline);
         }
         crate::macros::user_macro(self, cx, call)
+    }
+
+    fn property_key(&self, cx: &mut Cx<'_>, access: &AccessSite, tag: Tag) -> PResult<Claim<String>> {
+        if tag != crate::components::TAG_KEY_OBFUSCATION {
+            return Ok(Claim::Decline);
+        }
+        crate::components::obfuscation::obfuscated_key(self, cx, access)
+    }
+
+    fn assignment(&self, cx: &mut Cx<'_>, site: &AssignSite, tag: Tag) -> PResult<Claim<LuauExpr>> {
+        if tag != crate::components::TAG_ATTRIBUTES {
+            return Ok(Claim::Decline);
+        }
+        crate::components::setter::attribute_setter(cx, site)
     }
 
     fn class(&self, cx: &mut Cx<'_>, class: &ClassSite) -> PResult<Vec<LuauStmt>> {

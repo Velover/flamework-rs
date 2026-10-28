@@ -1,0 +1,6 @@
+{
+	"name": "f6-component-fixture",
+	"version": "0.0.0",
+	"private": true,
+	"description": "flamework_rs F6: component config, instance shapes, attribute setters and key obfuscation."
+}

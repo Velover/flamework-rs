@@ -60,7 +60,20 @@ impl FwShared {
 /// `buildGuardFromType`: the guard of `ty`. Errors (unsupported types) are reported at `node`, with a note for each
 /// type the guard was being built inside of, and abort the hook.
 pub fn guard_for(cx: &mut Cx<'_>, config: GuardConfig<'_>, node: P<Node>, ty: P<Type>) -> PResult<LuauExpr> {
+    guard_for_in_context(cx, config, node, ty, None)
+}
+
+/// [`guard_for`] inside `withDiagnosticContext(at, message, …)`: an error becomes a note of an error at `at` with
+/// `message` (component links: "Failed to generate a guard for the …link").
+pub fn guard_for_in_context(
+    cx: &mut Cx<'_>,
+    config: GuardConfig<'_>,
+    node: P<Node>,
+    ty: P<Type>,
+    context: Option<(P<Node>, String)>,
+) -> PResult<LuauExpr> {
     let mut generator = Generator::new(cx, config.package_name, node);
+    generator.set_context(context);
     let mut guard = generator.build_guard(ty)?;
     generator.names.assign(generator.cx, &mut [], Some(&mut guard));
     Ok(guard)
@@ -123,7 +136,20 @@ pub fn guard_fields(
     ty: P<Type>,
     interface: bool,
 ) -> PResult<Vec<(LuauExpr, LuauExpr)>> {
+    guard_fields_in_context(cx, config, node, ty, interface, None)
+}
+
+/// [`guard_fields`] inside `withDiagnosticContext` (component attributes: "Failed to generate component attributes").
+pub fn guard_fields_in_context(
+    cx: &mut Cx<'_>,
+    config: GuardConfig<'_>,
+    node: P<Node>,
+    ty: P<Type>,
+    interface: bool,
+    context: Option<(P<Node>, String)>,
+) -> PResult<Vec<(LuauExpr, LuauExpr)>> {
     let mut generator = Generator::new(cx, config.package_name, node);
+    generator.set_context(context);
     let fields = generator.build_guards_from_type(ty, interface)?;
     let mut map = create::map(fields);
     generator.names.assign(generator.cx, &mut [], Some(&mut map));
