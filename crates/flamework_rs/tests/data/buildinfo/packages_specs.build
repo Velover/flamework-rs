@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"flameworkVersion": "2.0.0-alpha.8",
+	"flameworkVersion": "2.0.0-beta.0",
 	"identifiers": {
 		"@flamework-experimental/specs:out/specs/components@Tagged": "$t:specs/components@Tagged",
 		"@flamework-experimental/specs:out/specs/components@Defaulted": "$t:specs/components@Defaulted",
@@ -203,6 +203,9 @@
 		"@flamework-experimental/specs:out/fixtures/discovery/exportEquals@ExportEqualsProvider": "$t:fixtures/discovery/exportEquals@ExportEqualsProvider",
 		"@flamework-experimental/specs:out/fixtures/discovery/namespaced@Inner.NamespacedProvider": "$t:fixtures/discovery/namespaced@Inner.NamespacedProvider",
 		"@flamework-experimental/specs:out/fixtures/discovery/nested/deep@DeepProvider": "$t:fixtures/discovery/nested/deep@DeepProvider"
+	},
+	"inputs": {
+		"config": "5536e6c80ac069c84c7d51c7bb86efc1b020899b"
 	},
 	"idGenerationMode": "full",
 	"identifierPrefix": "$t",

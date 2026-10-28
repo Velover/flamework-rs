@@ -162,6 +162,9 @@
 		"flamework-test-place:out/server/Fixtures/lifecycleProviders@DupBase": "server/Fixtures/lifecycleProviders@DupBase",
 		"flamework-test-place:out/server/Fixtures/lifecycleProviders@DupChild": "server/Fixtures/lifecycleProviders@DupChild"
 	},
+	"inputs": {
+		"config": "2bdfed849c385823eae4bbb43b8be293e23260e8"
+	},
 	"idGenerationMode": "full",
 	"metadata": {
 		"paths": {

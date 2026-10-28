@@ -70,7 +70,7 @@ pub use plugin::{Flamework, FwFilePart, FwInstance, FwShared};
 
 /// The Flamework version this transformer is, and writes into `flamework.build`. Every
 /// `@flamework-experimental` package is released at one version.
-pub const VERSION: &str = "2.0.0-alpha.8";
+pub const VERSION: &str = "2.0.0-beta.0";
 
 /// A mistake in the project's files (config, tsconfig entry, build info), reported without a stack: the TS
 /// transformer's `ProjectError`. The compiler turns it into a `Fatal` (§11.2).

@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"flameworkVersion": "2.0.0-alpha.8",
+	"flameworkVersion": "2.0.0-beta.0",
 	"identifiers": {
 		"@flamework-experimental/core:out/module/module@Module": "$:module/module@Module",
 		"@flamework-experimental/core:out/lifecycle/lifecyclePlugin@LifecycleProvider": "$:lifecycle/lifecyclePlugin@LifecycleProvider",
@@ -11,6 +11,9 @@
 		"@flamework-experimental/core:out/lifecycle/lifecycleInterfaces@OnInit": "$:lifecycle/lifecycleInterfaces@OnInit",
 		"@flamework-experimental/core:out/lifecycle/lifecycleInterfaces@OnStart": "$:lifecycle/lifecycleInterfaces@OnStart",
 		"@flamework-experimental/core:out/lifecycle/lifecycleInterfaces@OnExtinguished": "$:lifecycle/lifecycleInterfaces@OnExtinguished"
+	},
+	"inputs": {
+		"config": "8ce00f787001f8cb13b7353fbcceeb5f9fe3c96e"
 	},
 	"idGenerationMode": "full",
 	"identifierPrefix": "$"

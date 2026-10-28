@@ -23,6 +23,16 @@
 		"transformer-fixture:out/requireModules@RequiresOnStart": "fw:requireModules@RequiresOnStart",
 		"transformer-fixture:out/glob/target@GlobTarget": "fw:glob/target@GlobTarget"
 	},
+	"inputs": {
+		"config": "1cd5279662e55b200e985feda01b1ff71a757493",
+		"env": {
+			"src/env.ts": {
+				"FLAMEWORK_FIXTURE_SCOPES": "ed94275fa377677eedfc6a370a163830ace7c977",
+				"FLAMEWORK_FIXTURE_CHANNEL": "unset",
+				"FLAMEWORK_FIXTURE_MISSING": "unset"
+			}
+		}
+	},
 	"idGenerationMode": "full",
 	"identifierPrefix": "fw",
 	"metadata": {

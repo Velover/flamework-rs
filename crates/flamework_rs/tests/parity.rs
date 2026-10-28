@@ -457,9 +457,10 @@ fn build_infos_read_and_write_as_the_transformer_does() {
                     .to_owned()
             };
             let result = match op[0].as_str().unwrap() {
-                "setIdGenerationMode" => info
-                    .set_id_generation_mode(&arg(1))
-                    .map_or(JsValue::Null, JsValue::String),
+                "setIdGenerationMode" => {
+                    info.set_id_generation_mode(&arg(1));
+                    JsValue::Null
+                }
                 "setIdentifierPrefix" => {
                     info.set_identifier_prefix(op.get(1).and_then(JsValue::as_str));
                     JsValue::Null

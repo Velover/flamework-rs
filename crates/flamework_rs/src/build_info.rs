@@ -538,19 +538,13 @@ impl BuildInfo {
             .filter(|s| !s.is_empty())
     }
 
-    /// Records the id generation mode. When it differs from the recorded one, the identifier table is dropped and the
-    /// previous mode returned, so that the caller can say so. A build info without a recorded mode keeps its table.
-    pub fn set_id_generation_mode(&mut self, mode: &str) -> Option<String> {
-        let previous = self.string_field("idGenerationMode").map(str::to_owned);
+    /// Records the id generation mode. The identifier table is kept even when the mode differs from the recorded one
+    /// (`setIdGenerationMode` since 1a72fa1). In TS a build that reuses a table of another mode is refused before this
+    /// is called, by `refuseChangedInputs`. flamework_rs has no counterpart yet (TODO(S2)): setup always starts a
+    /// fresh table, so it must land together with reloading the previous build info.
+    pub fn set_id_generation_mode(&mut self, mode: &str) {
         self.data
             .insert("idGenerationMode", JsValue::String(mode.to_owned()));
-        match previous {
-            Some(previous) if previous != mode => {
-                self.identifiers_mut().clear();
-                Some(previous)
-            }
-            _ => None,
-        }
     }
 
     pub fn id_generation_mode(&self) -> Option<&str> {

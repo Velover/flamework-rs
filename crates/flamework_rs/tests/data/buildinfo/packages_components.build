@@ -1,11 +1,14 @@
 {
 	"version": 1,
-	"flameworkVersion": "2.0.0-alpha.8",
+	"flameworkVersion": "2.0.0-beta.0",
 	"identifiers": {
 		"@flamework-experimental/components:out/baseComponent@BaseComponent": "$c:baseComponent@BaseComponent",
 		"@flamework-experimental/components:out/baseComponent@ComponentMetadata": "$c:baseComponent@ComponentMetadata",
 		"@flamework-experimental/components:out/components@Components": "$c:components@Components",
 		"@flamework-experimental/components:out/componentModule@ComponentModuleConfig": "$c:componentModule@ComponentModuleConfig"
+	},
+	"inputs": {
+		"config": "7c463544e32b4bf72a70958bcb91358c8355c6a9"
 	},
 	"idGenerationMode": "full",
 	"identifierPrefix": "$c"

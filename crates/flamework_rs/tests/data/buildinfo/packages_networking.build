@@ -1,7 +1,10 @@
 {
 	"version": 1,
-	"flameworkVersion": "2.0.0-alpha.8",
+	"flameworkVersion": "2.0.0-beta.0",
 	"identifiers": {},
+	"inputs": {
+		"config": "5c37d4f9aad2ec2985cff7f2ae22539c578d75a1"
+	},
 	"idGenerationMode": "full",
 	"identifierPrefix": "$n"
 }
