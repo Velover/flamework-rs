@@ -46,8 +46,12 @@ schemas against the transformer's reads the monorepo from `FLAMEWORK_MONOREPO`.
 examples; `<url>` stands for this repository's git URL):
 
 ```sh
-cargo install --git <url> --rev <hash> rbxtsc_fw --root E:\Tools\rbxts\fw-2.0.0-beta.0
+cargo install --locked --git <url> --rev <hash> rbxtsc_fw --root E:\Tools\rbxts\fw-2.0.0-beta.0
 ```
+
+`--locked` makes Cargo use the repository's `Cargo.lock`; without it, `cargo install` ignores the lock and resolves
+the dependencies again. `cargo install` builds with the release profile (fat LTO, one codegen unit), so it builds
+slowly.
 
 That gives `E:\Tools\rbxts\fw-2.0.0-beta.0\bin\rbxtsc-fw.exe`. The plain compiler from rbxts-rs (no Flamework) goes in a
 folder of its own the same way, for example `E:\Tools\rbxts\rbxtsc\`.
@@ -104,6 +108,8 @@ Where flamework-rs's output may differ from Flamework's TS transformer (TypeScri
   TS5, which lists them in the order its checker first made the keys' literal types (it shifts with unrelated
   edits). The guard checks the same keys, so only the generated text differs, not what it accepts. Serializers of
   these types order their fields by the mapped type itself and are exact.
+- **Guard text of a union** (`t.union(...)`, a literal union): the members are listed in the order TypeScript 7 gives
+  a union's constituents, not TS5's. Only the text differs; the guard accepts the same values.
 - **Order that depends on symbol ids.** A union that no written type orders (`Box<A | B>` reaching `value: T`) orders
   its members by a text of each type, and an object's text spells a unique-symbol key with the symbol's id
   (`__@sym@12`). Two keys whose texts agree up to the id (two unique symbols with the same name from different modules,
@@ -125,6 +131,10 @@ Where it differs from TS5's output in shape only, with the same behaviour:
   function makes roblox-ts see the loop variable captured and copy it per iteration (`local i = _i` … `_i = i`);
   flamework-rs's packing is not seen as a closure, so the loop has no copies. The function is called where it is made,
   so nothing can see the difference.
+- **A comment at the end of a file** (after its last statement) is kept, where TS5 with Flamework's transformer
+  drops it in every file of the project. Comments only.
+- **Type errors and Flamework errors in one file** with `noSemanticDiagnostics: true`: flamework-rs reports the type
+  errors where TS5 reports the Flamework error. Diagnostics only; the build fails either way.
 
 Where it differs on purpose:
 
@@ -145,3 +155,4 @@ What flamework-rs refuses that TS5 builds:
 - **Spreading a map, an iterable function or a generator into a packed call's arguments** (`events.list.fire(...map)`):
   arrays, tuples, strings and sets are spread as roblox-ts spreads them; the rest is a build error. Spread the values
   into an array first (`[...map]`).
+- **An inlined or rewritten macro call followed by more of its optional chain** (`maybe?.inlined<T>().size()`).

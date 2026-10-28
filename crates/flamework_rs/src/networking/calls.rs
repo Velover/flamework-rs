@@ -21,7 +21,8 @@
 //!
 //! **Names.** The locals are named as TypeScript's printer named the TS transformer's unique names: those that land
 //! ahead of a statement when the printer began the function body (or file) around it (`generateNames`,
-//! [`crate::serializer::enter_statement`]), the rest where they print.
+//! [`crate::serializer::enter_statement`]), the rest where they print. A class's members printed in source order, so a
+//! hook in a member first names the sites of the members before it.
 
 use rbxts_luau::{AssignmentOperator, BinaryOperator, Expr, Stmt, UnaryOperator, create};
 use rbxts_plugin::ts::{Kind, Node, P, Type};

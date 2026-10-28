@@ -9,7 +9,7 @@
 //! `tests/fixture_calls/expected/out` holds the TS5 pipeline's output (roblox-ts master with the published
 //! 2.0.0-beta.0 transformer, `fieldInfoPlugin.cjs` as its plugin), each file compared whole.
 //!
-//! `tests/chain_errors` holds inlined and rewritten macro calls that end optional chains, which TS5 compiles by
+//! `tests/fixture_chains` holds inlined and rewritten macro calls that end optional chains, which TS5 compiles by
 //! replacing the call node (the `crate::macros` docs): `ts5-reference/chaingaps.luau` is TS5's output for the source.
 
 #![cfg(windows)]
@@ -65,14 +65,14 @@ fn every_shape_matches_ts5() {
 }
 
 /// Inlined and rewritten macro calls that end an optional chain, compiled as TS5 replaced the call node (41 calls: 28
-/// inlined, 13 rewritten): `chain_errors/ts5-reference/chaingaps.luau` is TS5's output for the same source, compared
+/// inlined, 13 rewritten): `fixture_chains/ts5-reference/chaingaps.luau` is TS5's output for the same source, compared
 /// whole.
 #[test]
 fn inlined_and_rewritten_calls_in_optional_chains_match_ts5() {
-    let Some(project) = Project::new("chain_errors", "chains") else { return };
+    let Some(project) = Project::new("fixture_chains", "chains") else { return };
     let report = project.build_with(flamework_with_fixture_macros());
     assert_clean(&report);
-    let path = fixture_dir("chain_errors").join("ts5-reference/chaingaps.luau");
+    let path = fixture_dir("fixture_chains").join("ts5-reference/chaingaps.luau");
     let want = std::fs::read_to_string(path).unwrap().replace("\r\n", "\n");
     let got = luau(&report, "shared/chaingaps.luau");
     assert!(got == want, "{}", first_difference("chaingaps.luau", got, &want));

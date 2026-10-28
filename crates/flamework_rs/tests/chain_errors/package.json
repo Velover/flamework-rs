@@ -1,6 +1,0 @@
-{
-	"name": "chain-errors-fixture",
-	"version": "0.0.0",
-	"private": true,
-	"description": "flamework_rs: inlined and rewritten macro calls inside optional chains, refused until rbxts-rs can lower them as TS5 does."
-}

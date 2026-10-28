@@ -533,6 +533,8 @@ pub struct FileSerializer {
     scope_calls: HashMap<P<Node>, Vec<P<Node>>>,
     /// The functions (and the file) whose call sites' locals are named.
     entered: HashSet<P<Node>>,
+    /// The class members whose call sites' locals are named ([`enter_members_before`]).
+    members_entered: HashSet<P<Node>>,
 }
 
 /// One root statement's prepared sites: what they hoisted, each value's (`None` for a site that failed, or a decoder
@@ -804,18 +806,24 @@ pub fn prepare_serializers(fw: &FwInstance, cx: &mut Cx<'_>, groups: &[(P<Node>,
 /// `node`'s root statement hoisted, and of the root statements before it, unless done, and names the locals the call
 /// sites of each function around `node` put ahead of their statements, unless done. TypeScript's printer printed a
 /// root statement's hoisted code ahead of the statement, so it named it before anything a hook of the statement
-/// made (a guard's locals, say), and it named a function body's declarations when it began to print the body.
+/// made (a guard's locals, say), and it named a function body's declarations when it began to print the body. In a
+/// class member, the call sites of the members before it are named first ([`enter_members_before`]).
 pub fn enter_statement(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>) {
     let mut statement = node;
     let mut scopes = Vec::new();
     while let Some(parent) = statement.parent()
         && parent.kind() != SyntaxKind::SourceFile
     {
+        if matches!(parent.kind(), SyntaxKind::ClassDeclaration | SyntaxKind::ClassExpression)
+            && parent.members().contains(&statement)
+        {
+            scopes.push((parent, Some(statement)));
+        }
         if tsrs_ast::is_function_like(Some(parent))
             || parent.kind() == SyntaxKind::ClassStaticBlockDeclaration
             || parent.kind() == SyntaxKind::CallExpression
         {
-            scopes.push(parent);
+            scopes.push((parent, None));
         }
         statement = parent;
     }
@@ -825,11 +833,56 @@ pub fn enter_statement(fw: &FwInstance, cx: &mut Cx<'_>, node: P<Node>) {
     }
     // Outermost first, as the printer enters them: a function's body, or the function a call site's packing is
     // wrapped in, whose locals print ahead of anything in the call (its target and arguments).
-    for &scope in scopes.iter().rev() {
-        if scope.kind() == SyntaxKind::CallExpression {
+    for &(scope, member) in scopes.iter().rev() {
+        if let Some(member) = member {
+            enter_members_before(fw, cx, scope, member);
+        } else if scope.kind() == SyntaxKind::CallExpression {
             enter_wrapped_call(fw, cx, scope);
         } else {
             enter_function(fw, cx, scope);
+        }
+    }
+}
+
+/// Names the call sites' locals of the members of `class` before `member`, once each. TypeScript's printer printed a
+/// class's members in source order, so it named theirs before it reached `member`; roblox-ts compiles the instance
+/// properties' initializers first (in the constructor), then the methods, then the static properties, so their hooks
+/// may come later. Within a member, as the printer reached them: a function's sites that land ahead of a statement
+/// when it began the function, a wrapped site when it began the site's function.
+fn enter_members_before(fw: &FwInstance, cx: &mut Cx<'_>, class: P<Node>, member: P<Node>) {
+    let span = |node: P<Node>| (node.pos().source_offset().unwrap_or(0), node.end().source_offset().unwrap_or(0));
+    for &earlier in class.members() {
+        if earlier == member {
+            break;
+        }
+        let mut entries = Vec::new();
+        {
+            let mut state = fw.serializer.borrow_mut();
+            if !state.members_entered.insert(earlier) {
+                continue;
+            }
+            let (start, end) = span(earlier);
+            for (&node, call) in &state.calls {
+                let (pos, call_end) = span(node);
+                if pos < start || call_end > end {
+                    continue;
+                }
+                let call = call.borrow();
+                let (at, wrapped) =
+                    if call.placement.ahead_of_statement() { (call.naming_scope, false) } else { (node, true) };
+                let (at_pos, at_end) = span(at);
+                // Outer before inner where they start together (`f().x.fire(…)` with `f()` a send).
+                entries.push((at_pos, std::cmp::Reverse(at_end), wrapped, at));
+            }
+        }
+        entries.sort_by_key(|&(pos, end, wrapped, _)| (pos, end, wrapped));
+        entries.dedup_by_key(|entry| entry.3);
+        for (_, _, wrapped, at) in entries {
+            if wrapped {
+                enter_wrapped_call(fw, cx, at);
+            } else {
+                enter_function(fw, cx, at);
+            }
         }
     }
 }

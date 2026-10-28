@@ -3,8 +3,9 @@
 //! mode (packed by `networking.serialization`, `Unreliable`, `Raw`, `Serialized`), the declarations' decoders and
 //! middleware, arguments read where they are or bound, spreads, every place a call can stand (ahead of its statement,
 //! in a function, in a `do` block past a function's or the file's budget of locals, including a function or file so
-//! full of locals already that the packing is built as first built, `wide.ts` and `wideTop.ts`), nested sends and the
-//! client and server sides (`crate::networking`).
+//! full of locals already that the packing is built as first built, `wide.ts` and `wideTop.ts`), nested sends, sends
+//! in class members (`members.ts`: named in source order, which roblox-ts does not compile them in) and the client and
+//! server sides (`crate::networking`).
 //!
 //! `tests/fixture_f5/expected` holds the TS5 pipeline's output (roblox-ts master with the published 2.0.0-beta.0
 //! transformer) for every file but one, each compared whole (`chained.ts`: sends in an optional chain, in a function

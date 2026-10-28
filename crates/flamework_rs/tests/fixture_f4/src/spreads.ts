@@ -29,7 +29,7 @@ declare const keyed: Record<"q" | "c", u8>;
 const twoRunsValue = () => ({ a1: 1 as u8, ...keyed, z9: true, ...picked });
 export type TwoRuns = ReturnType<typeof twoRunsValue>;
 // Object rests of one run (properties one mapped type made, a single property): their order does not depend on the
-// order the rest lists them in, which rbxts-rs does not rebuild yet (a rest of several runs is refused).
+// order the rest lists them in.
 declare const four: Record<"c" | "b" | "a" | "d", u8>;
 const restValue = () => {
 	const { b: _b, ...rest } = four;

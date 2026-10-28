@@ -14,16 +14,12 @@
 //! rest of what a root statement's serializers hoisted is named at the statement's first Flamework hook, as it
 //! printed ahead of the statement (so it comes before a guard earlier in the statement), and each serializer's value
 //! when its site is built. What still follows hook order rather than print order: names other hooks give at file
-//! level (F2's hoisted metadata, F3's dedup locals) against the serializers' nested names, and some of a user
-//! macro's written arguments. Its hook compiles the written arguments ahead of its last generated one in index order
-//! between the generated values only where that cannot change anything else (`crate::macros`'s `written_ahead`: no
-//! prereqs, a callee holding no call), so `wrap<T>(Flamework.createGuard<U>())` names the guard first, as TS5's
-//! printer did. Any other written argument (one that may leave prereqs, such as `c ? createGuard<U>() : x`) is an
-//! `Original` slot of `compile_call`, which compiles it after the hook built every generated value: a name in it
-//! prints first but is named after theirs. Exact order there would need `compile_call` to take a slot the plugin
-//! builds when the call's lowering reaches it (a deferred `Arg`); exact order everywhere, the compiler to name
-//! plugins' identifiers at render time, in print order (an API taking placeholder identifiers and their hints, named
-//! by the renderer as TypeScript's printer named `createUniqueName` identifiers).
+//! level (F2's hoisted metadata, F3's dedup locals) against the serializers' nested names. A user macro's generated
+//! values are `Arg::Deferred` slots of `compile_call_with` (`crate::macros`), built when the call's lowering reaches
+//! them among the written arguments, so the names in written and generated arguments come out in TS5's order
+//! (`wrap<T>(Flamework.createGuard<U>())` names the guard first, as TS5's printer did). Exact order everywhere would
+//! need the compiler to name plugins' identifiers at render time, in print order (an API taking placeholder
+//! identifiers and their hints, named by the renderer as TypeScript's printer named `createUniqueName` identifiers).
 //!
 //! **The identifiers table** is TS5's parser's `identifiers` of the file, as the compiler lists it
 //! (`Cx::file_identifier_texts`: identifiers and private names, JSDoc's included, and the string and numeric

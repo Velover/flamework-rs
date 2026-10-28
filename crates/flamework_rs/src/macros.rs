@@ -458,7 +458,7 @@ pub(crate) fn has_symbol_callee(call: P<Node>) -> bool {
 /// `transformUserMacro`, decided from the callee's own symbol (aliases skipped), as the call hook's offer is, not from
 /// the resolved signature's declaration: `const alias = wrap; alias<T>(x)` and `holder.inner.wrap<T>(x)` (with
 /// `inner = { wrap }`) resolve to `wrap`'s signature but are plain calls. The pre-scans that must agree with the hook
-/// ([`collect_sites`], [`is_plain_operand`], `crate::order`) ask this.
+/// ([`collect_sites`], `crate::order`) ask this.
 pub(crate) fn is_macro_callee(fw: &FwInstance, cx: &mut Cx<'_>, call: P<Node>) -> bool {
     if !has_symbol_callee(call) {
         return false;

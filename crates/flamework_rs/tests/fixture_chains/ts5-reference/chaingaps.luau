@@ -8,9 +8,8 @@ local macros = _macros.macros
 local maybe = _macros.maybe
 local sideEffect = _macros.sideEffect
 -- Inlined and rewritten macro calls inside optional chains. TS5 replaces the call node: an inlined call's value
--- stands for the whole chain, a rewritten call keeps only its own `?.`. rbxts-rs offers these calls inside the
--- chain's nil check, where they cannot behave as in TS5, so flamework-rs refuses each with an error until it offers
--- the chain's outermost call first. TS5's output is ts5-reference/chaingaps.luau.
+-- stands for the whole chain, a rewritten call keeps only its own `?.`. flamework-rs takes each when rbxts-rs offers
+-- the chain's outermost call, before anything of the chain is compiled. TS5's output is ts5-reference/chaingaps.luau.
 -- o.m?.()
 local inlined0_22 = "Economy"
 local inlinedValue0_23 = "shared/macros@Economy"

@@ -47,7 +47,7 @@ local twoRunsValue = function()
 	return _object
 end
 -- Object rests of one run (properties one mapped type made, a single property): their order does not depend on the
--- order the rest lists them in, which rbxts-rs does not rebuild yet (a rest of several runs is refused).
+-- order the rest lists them in.
 local restValue = function()
 	local _b = four.b
 	local _rest = {}

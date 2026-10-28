@@ -1,5 +1,5 @@
 {
-	"name": "chain-errors-fixture",
+	"name": "chains-fixture",
 	"tree": {
 		"$className": "DataModel",
 		"ServerScriptService": { "$className": "ServerScriptService", "TS": { "$path": "out/server" } },

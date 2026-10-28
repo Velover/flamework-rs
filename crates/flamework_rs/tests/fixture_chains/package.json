@@ -1,0 +1,6 @@
+{
+	"name": "chains-fixture",
+	"version": "0.0.0",
+	"private": true,
+	"description": "flamework_rs: inlined and rewritten macro calls that end optional chains, compiled as TS5 compiles them."
+}
